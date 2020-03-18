@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::ops::{Add, Sub, Index, IndexMut};
+use std::rc::Rc;
 
 //use std::fs;
 
@@ -82,14 +83,14 @@ mod tests {
 struct VarId(u32);
 
 #[derive(Clone, Debug)]
-struct PloopBlock(Vec<PloopStatement>);
+struct PloopBlock(Rc<Vec<PloopStatement>>);
 
 #[derive(Clone, Debug)]
 enum PloopStatement {
     AddToInto(Natural, VarId, VarId),
     SubtractFromInto(Natural, VarId, VarId),
-    LoopDo(VarId, PloopBlock), // Rc
-    DoTimes(Natural, PloopBlock), // Rc?
+    LoopDo(VarId, PloopBlock),
+    DoTimes(Natural, PloopBlock),
     // loop-forever
     // break
     // calc
@@ -118,8 +119,6 @@ impl PloopStatement {
                 println!("DoTimes: {:?} {:?}", amount, block);
                 if !amount.is_zero() {
                     amount.decrement();
-                    // "move" should be possible here, somehow.
-                    // TODO: Use Rc for blocks?
                     conf.push(DoTimes(amount, block.clone()));
                     conf.push_all(&block);
                 }
@@ -175,7 +174,7 @@ impl Configuration {
     }
 
     fn push_all(&mut self, block: &PloopBlock) {
-        let mut statements = block.0.clone();
+        let mut statements : Vec<PloopStatement> = (*block.0).clone();
         statements.reverse();
         self.stack.extend_from_slice(&statements);
     }
@@ -198,17 +197,17 @@ fn main() {
     println!("{}", data);*/
 
     use PloopStatement::*;
-    let sample_prog = PloopBlock(vec![
+    let sample_prog = PloopBlock(Rc::new(vec![
         SubtractFromInto(Natural(5), VarId(0), VarId(1)),
         AddToInto(Natural(5), VarId(1), VarId(1)),
         AddToInto(Natural(0), VarId(2), VarId(0)),
-        LoopDo(VarId(1), PloopBlock(vec![
+        LoopDo(VarId(1), PloopBlock(Rc::new(vec![
             AddToInto(Natural(2), VarId(0), VarId(0)),
-        ])),
+        ]))),
         // This implements:
         // x1 = min(5, x0)
         // x0 = 2 * x1
-    ]);
+    ]));
 
     let mut conf = Configuration::new(Natural(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
