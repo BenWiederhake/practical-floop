@@ -91,8 +91,7 @@ enum PloopStatement {
     SubtractFromInto(Natural, VarId, VarId),
     LoopDo(VarId, PloopBlock),
     DoTimes(Natural, PloopBlock),
-    // loop-forever
-    // break
+    WhileDo(VarId, PloopBlock),
     // calc
 }
 
@@ -123,6 +122,13 @@ impl PloopStatement {
                     conf.push_all(&block);
                 }
             }
+            WhileDo(var, block) => {
+                println!("WhileDo: {:?} {:?}", var, block);
+                if !conf.state[&var].is_zero() {
+                    conf.push(WhileDo(var, block.clone()));
+                    conf.push_all(&block);
+                }
+            },
         }
     }
 }
@@ -204,6 +210,7 @@ fn main() {
         LoopDo(VarId(1), PloopBlock(Rc::new(vec![
             AddToInto(Natural(2), VarId(0), VarId(0)),
         ]))),
+        WhileDo(VarId(3), PloopBlock(Rc::new(vec![]))),
         // This implements:
         // x1 = min(5, x0)
         // x0 = 2 * x1
