@@ -16,10 +16,10 @@ struct Natural(u64);
     }
 }*/
 
-impl Add<&Natural> for Natural {
+impl Add<Natural> for Natural {
     type Output = Natural;
 
-    fn add(self, rhs: &Natural) -> Natural {
+    fn add(self, rhs: Natural) -> Natural {
         Natural(self.0.checked_add(rhs.0).unwrap())
     }
 }
@@ -32,11 +32,21 @@ impl Add<&Natural> for Natural {
     }
 }*/
 
-impl Sub<&Natural> for Natural {
+impl Sub<Natural> for Natural {
     type Output = Natural;
 
-    fn sub(self, rhs: &Natural) -> Natural {
+    fn sub(self, rhs: Natural) -> Natural {
         Natural(self.0.saturating_sub(rhs.0))
+    }
+}
+
+impl Natural {
+    fn decrement(&mut self) {
+        self.0 = self.0.checked_sub(1).unwrap();
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0 == 0
     }
 }
 
@@ -79,31 +89,41 @@ enum PloopStatement {
     AddToInto(Natural, VarId, VarId),
     SubtractFromInto(Natural, VarId, VarId),
     LoopDo(VarId, PloopBlock), // Rc
-    //DoTimes(Natural, PloopBlock), // Rc?
+    DoTimes(Natural, PloopBlock), // Rc?
     // loop-forever
     // break
     // calc
 }
 
 impl PloopStatement {
-    fn apply(&self, conf: &mut Configuration) {
+    fn apply(self, conf: &mut Configuration) {
         // TODO: Assertions would need a return value of sorts
         use PloopStatement::*;
         match self {
-            AddToInto(amt, src, dst) => {
-                println!("AddToInto: {:?} {:?} {:?}", amt, src, dst);
-                let newval = conf.state[src].clone() + amt;
-                conf.state[dst] = newval;
+            AddToInto(amount, src, dst) => {
+                println!("AddToInto: {:?} {:?} {:?}", amount, src, dst);
+                let newval = conf.state[&src].clone() + amount;
+                conf.state[&dst] = newval;
             },
-            SubtractFromInto(amt, src, dst) => {
-                println!("SubtractFromInto: {:?} {:?} {:?}", amt, src, dst);
-                let newval = conf.state[src].clone() - amt;
-                conf.state[dst] = newval;
+            SubtractFromInto(amount, src, dst) => {
+                println!("SubtractFromInto: {:?} {:?} {:?}", amount, src, dst);
+                let newval = conf.state[&src].clone() - amount;
+                conf.state[&dst] = newval;
             },
-            LoopDo(a, b) => {
-                println!("LoopDo: {:?} {:?}", a, b);
-                unimplemented!();
+            LoopDo(var, block) => {
+                println!("LoopDo: {:?} {:?}", var, block);
+                conf.push(DoTimes(conf.state[&var].clone(), block));
             },
+            DoTimes(mut amount, block) => {
+                println!("DoTimes: {:?} {:?}", amount, block);
+                if !amount.is_zero() {
+                    amount.decrement();
+                    // "move" should be possible here, somehow.
+                    // TODO: Use Rc for blocks?
+                    conf.push(DoTimes(amount, block.clone()));
+                    conf.push_all(&block);
+                }
+            }
         }
     }
 }
@@ -141,13 +161,23 @@ struct Configuration {
 }
 
 impl Configuration {
-    fn new(input: Natural, program: PloopBlock) -> Configuration {
-        let mut program_statements = program.0;
-        program_statements.reverse();
-        Configuration {
+    fn new(input: Natural, program: &PloopBlock) -> Configuration {
+        let mut cfg = Configuration {
             state: Environment::new(input),
-            stack: program_statements,
-        }
+            stack: Vec::with_capacity(program.0.len()),
+        };
+        cfg.push_all(program);
+        cfg
+    }
+
+    fn push(&mut self, statement: PloopStatement) {
+        self.stack.push(statement);
+    }
+
+    fn push_all(&mut self, block: &PloopBlock) {
+        let mut statements = block.0.clone();
+        statements.reverse();
+        self.stack.extend_from_slice(&statements);
     }
 
     fn step(&mut self) {
@@ -158,7 +188,7 @@ impl Configuration {
     fn run(&mut self) {
         while !self.stack.is_empty() {
             self.step();
-            println!("Configuration after one step: {:?}", self);
+            println!("Configuration afterwards: {:?}", self);
         }
     }
 }
@@ -180,7 +210,7 @@ fn main() {
         // x0 = 2 * x1
     ]);
 
-    let mut conf = Configuration::new(Natural(2), sample_prog);
+    let mut conf = Configuration::new(Natural(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
     conf.run();
     println!("Done");
