@@ -67,6 +67,7 @@ FIXME
 
 * Everything!
 * Tests!
+* `pub`-correctness?
 * Documentation!
 
 ## NOTDOs

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ops::{Add, Sub};
 
 //use std::fs;
@@ -51,7 +52,7 @@ mod tests {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
 struct VarId(u32);
 
 #[derive(Clone, Debug)]
@@ -66,6 +67,18 @@ enum PloopStatement {
     // loop-forever
     // break
     // calc
+}
+
+// Consider a splay tree, as accesses are going to be repetitive.
+#[derive(Clone, Debug)]
+struct Environment(BTreeMap<VarId, Natural>);
+
+impl Environment {
+    fn new(input: Natural) -> Environment {
+        let mut map = BTreeMap::new();
+        map.insert(VarId(0), input);
+        Environment(map)
+    }
 }
 
 fn main() {
@@ -83,6 +96,8 @@ fn main() {
         // x1 = min(5, x0)
         // x0 = 2 * x1
     ]);
-
     println!("Sample prog is {:?}", sample_prog);
+
+    let env = Environment::new(Natural(3));
+    println!("Sample env is {:?}", env);
 }
