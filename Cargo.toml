@@ -1,0 +1,11 @@
+[package]
+name = "practical-floop"
+version = "0.1.0"
+authors = ["Ben Wiederhake <BenWiederhake.GitHub@gmx.de>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# See "struct Natural"
+# num-bigint = "0.2.6"
