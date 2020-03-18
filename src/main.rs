@@ -2,7 +2,7 @@ use std::ops::{Add, Sub};
 
 //use std::fs;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 // For now, always clone explicitly.
 // This makes transition to "BigNum" easier, I hope?
 struct Natural(u64);
@@ -20,6 +20,34 @@ impl Sub<u64> for Natural {
 
     fn sub(self, rhs: u64) -> Natural {
         Natural(self.0.saturating_sub(rhs))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        assert_eq!(Natural(42) + 1337, Natural(42 + 1337));
+        assert_eq!(Natural(0) + 0, Natural(0));
+    }
+
+    #[test]
+    fn test_sub() {
+        assert_eq!(Natural(0) - 0, Natural(0));
+        assert_eq!(Natural(5) - 3, Natural(2));
+        assert_eq!(Natural(5) - 55, Natural(0));
+    }
+
+    #[test]
+    fn test_clonable() {
+        let x = Natural(123);
+        let y = x.clone() + 321;
+        let z = y.clone() - 40;
+        assert_eq!(x, Natural(123));
+        assert_eq!(y, Natural(444));
+        assert_eq!(z, Natural(404));
     }
 }
 
@@ -43,11 +71,6 @@ enum PloopStatement {
 fn main() {
     /*let data = fs::read_to_string("/etc/hosts").expect("Unable to read file");
     println!("{}", data);*/
-
-    let x = Natural(123);
-    let y = x.clone() + 321;
-    let z = y.clone() - 40;
-    println!("Hello, world!  {:?} {:?} {:?} {:?} (should be 42, 123, 444, and 404)", Natural(42), x, y, z);
 
     use PloopStatement::*;
     let sample_prog = PloopBlock(vec![
