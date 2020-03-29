@@ -961,6 +961,7 @@ impl Configuration {
             self.step();
             println!("Configuration afterwards: {:?}", self);
         }
+        println!("Output is: {:?}", self.state[&VarId(0)]);
     }
 }
 
