@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::{Rc};
 
 use super::{ParseIdent, ParseBlock, ParseStatement, VarId, PloopBlock, PloopStatement};
 
@@ -115,7 +114,7 @@ impl Resolver {
             });
         }
 
-        PloopBlock(Rc::new(resolved_statements))
+        PloopBlock::from(resolved_statements.as_slice())
     }
 }
 
