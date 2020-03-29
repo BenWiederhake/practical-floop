@@ -4,7 +4,7 @@ use std::num::{IntErrorKind, ParseIntError};
 use num_traits::{Num};
 
 // Who you gonna call?!
-use super::Natural;
+use super::{Natural};
 
 fn convert_num_error(e: ParseIntError) -> Error {
     use IntErrorKind::*;
