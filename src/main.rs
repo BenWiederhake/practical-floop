@@ -3,45 +3,35 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
-use std::num::{ParseIntError, IntErrorKind};
-use std::ops::{Add, Deref, Sub, Index, IndexMut};
+use std::num::{IntErrorKind, ParseIntError};
+use std::ops::{Deref, Index, IndexMut};
 use std::rc::{Rc};
-use std::str::{FromStr};
-
 //use std::fs;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-// For now, always clone explicitly.
-// This makes transition to "BigNum" easier, I hope?
-struct Natural(u64);
+use num_bigint::{BigUint, ParseBigIntError};
+use num_traits::{Num};
+use num_traits::identities::{Zero};
+use num_traits::ops::checked::{CheckedSub};
 
-impl Add<Natural> for Natural {
-    type Output = Natural;
+#[macro_use]
+extern crate lazy_static;
 
-    fn add(self, rhs: Natural) -> Natural {
-        Natural(self.0.checked_add(rhs.0).unwrap())
-    }
+type Natural = BigUint;
+
+fn convert_bigint_error(e: ParseBigIntError) -> Error {
+    /*use IntErrorKind::*;
+    let msg : String = match e.kind() {
+        Empty => "empty specifier".into(),
+        InvalidDigit => format!("not a digit ({})", e),
+        Overflow => format!("cannot handle large naturals yet (BUG) ({})", e),
+        Underflow => format!("must be non-negative ({})", e),
+        Zero => unreachable!(),
+        _ => format!("unknown (BUG) ({})", e),  // unfixable
+    };*/
+    Error::new(ErrorKind::InvalidData, e)
 }
 
-impl Sub<Natural> for Natural {
-    type Output = Natural;
-
-    fn sub(self, rhs: Natural) -> Natural {
-        Natural(self.0.saturating_sub(rhs.0))
-    }
-}
-
-impl Natural {
-    fn decrement(&mut self) {
-        self.0 = self.0.checked_sub(1).unwrap();
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0 == 0
-    }
-}
-
-fn convert_int_error(e: ParseIntError) -> Error {
+fn convert_num_error(e: ParseIntError) -> Error {
     use IntErrorKind::*;
     let msg : String = match e.kind() {
         Empty => "empty specifier".into(),
@@ -54,24 +44,28 @@ fn convert_int_error(e: ParseIntError) -> Error {
     Error::new(ErrorKind::InvalidData, msg)
 }
 
-impl FromStr for Natural {
-    type Err = Error;
+fn parse_natural(digits: &str) -> Result<Natural> {
+    let radix = match digits.chars().next() {
+        None => return Err(Error::new(ErrorKind::InvalidData,
+            "Cannot parse natual '0'.  Did you mean '0x0'?")),
+        Some('b') => 2,
+        Some('o') => 8,
+        Some('d') => 10,
+        Some('x') => 16,
+        Some(c) => return Err(Error::new(ErrorKind::InvalidData,
+            format!("Unknown base '{}'", c))),
+    };
 
-    fn from_str(digits: &str) -> Result<Natural> {
-        let radix = match digits.chars().next() {
-            None => return Err(Error::new(ErrorKind::InvalidData,
-                "Cannot parse natual '0'.  Did you mean '0x0'?")),
-            Some('b') => 2,
-            Some('o') => 8,
-            Some('d') => 10,
-            Some('x') => 16,
-            Some(c) => return Err(Error::new(ErrorKind::InvalidData,
-                format!("Unknown base '{}'", c))),
-        };
-        let result = u64::from_str_radix(&digits[1..], radix);
-        let value = result.map_err(convert_int_error)?;
-        Ok(Natural(value))
-    }
+    Natural::from_str_radix(&digits[1..], radix).map_err(convert_bigint_error)
+}
+
+fn natural(value: u32) -> Natural {
+    Natural::new(vec![value])
+}
+
+// TODO: Can this be done without lazy_static?
+lazy_static! {
+    static ref THE_ZERO: Natural = Natural::zero();
 }
 
 #[cfg(test)]
@@ -80,25 +74,25 @@ mod test_natural {
 
     #[test]
     fn test_add() {
-        assert_eq!(Natural(42) + Natural(1337), Natural(42 + 1337));
-        assert_eq!(Natural(0) + Natural(0), Natural(0));
+        assert_eq!(Natural(42) + &Natural(1337), Natural(42 + 1337));
+        assert_eq!(Natural(0) + &Natural(0), Natural(0));
     }
 
     #[test]
     fn test_sub() {
-        assert_eq!(Natural(0) - Natural(0), Natural(0));
-        assert_eq!(Natural(5) - Natural(3), Natural(2));
-        assert_eq!(Natural(5) - Natural(55), Natural(0));
+        assert_eq!(Natural(0).checked_sub(&Natural(0)), Natural(0));
+        assert_eq!(Natural(5).checked_sub(&Natural(3)), Natural(2));
+        assert_eq!(Natural(5).checked_sub(&Natural(55)), Natural(0));
     }
 
     #[test]
     fn test_clonable() {
         let x = Natural(123);
-        let y = x.clone() + Natural(321);
-        let z = y.clone() - Natural(40);
-        assert_eq!(x, Natural(123));
-        assert_eq!(y, Natural(444));
-        assert_eq!(z, Natural(404));
+        let y = x.clone() + &Natural(321);
+        let z = y.clone().checked_sub(&Natural(40));
+        assert_eq!(x, &Natural(123));
+        assert_eq!(y, &Natural(444));
+        assert_eq!(z, &Natural(404));
     }
 
     #[test]
@@ -280,9 +274,9 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
         debug_assert!(!word.is_empty());
 
         match word.chars().next().unwrap() {
-            'v' => Ok(Ident(ParseId::FromNumber(word[1..].parse().map_err(convert_int_error)?))),
+            'v' => Ok(Ident(ParseId::FromNumber(word[1..].parse().map_err(convert_num_error)?))),
             '_' => Ok(Ident(ParseId::FromString(word[1..].into()))),
-            '0' => Ok(Number(word[1..].parse()?)),
+            '0' => Ok(Number(parse_natural(&word[1..])?)),
             _ => Err(Error::new(ErrorKind::InvalidData,
                 format!("Unknown token '{}'", word))),
         }
@@ -606,7 +600,6 @@ mod test_parser {
     fn test_simple() {
         use Token::*;
         use ParseStatement::*;
-        //assert_eq!(parse_from_stream(vec![Add, Number(Natural(100)), To, Ident(ParseId::FromNumber(1337)), Into, Ident(ParseId::FromString("foo".to_string()))].iter().map(|t| Ok(t.clone()))).unwrap(), ParseBlock(vec![AddToInto(Natural(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))]));
         let parse_result = parse_token_vec(vec![
             Add, Number(Natural(100)),
             To, Ident(ParseId::FromNumber(1337)),
@@ -873,12 +866,14 @@ impl PloopStatement {
         match self {
             AddToInto(amount, src, dst) => {
                 println!("AddToInto: {:?} {:?} {:?}", amount, src, dst);
-                let newval = conf.state[&src].clone() + amount;
+                // FIXME
+                let newval = conf.state[&src].clone() + &amount;
                 conf.state[&dst] = newval;
             },
             SubtractFromInto(amount, src, dst) => {
                 println!("SubtractFromInto: {:?} {:?} {:?}", amount, src, dst);
-                let newval = conf.state[&src].clone() - amount;
+                // FIXME
+                let newval = conf.state[&src].clone().checked_sub(&amount).unwrap_or(THE_ZERO.clone());
                 conf.state[&dst] = newval;
             },
             LoopDo(var, block) => {
@@ -888,7 +883,7 @@ impl PloopStatement {
             DoTimes(mut amount, block) => {
                 println!("DoTimes: {:?} {:?}", amount, block);
                 if !amount.is_zero() {
-                    amount.decrement();
+                    amount = amount.checked_sub(&natural(1)).unwrap();
                     conf.push(DoTimes(amount, block.clone()));
                     conf.push_all(&block);
                 }
@@ -920,7 +915,7 @@ impl Index<&VarId> for Environment {
     type Output = Natural;
 
     fn index(&self, varid: &VarId) -> &Self::Output {
-        self.0.get(varid).unwrap_or(&Natural(0))
+        self.0.get(varid).unwrap_or(&THE_ZERO)
     }
 }
 
@@ -982,7 +977,7 @@ fn main() {
         # x0 = 2 * x1
     ").unwrap();
 
-    let mut conf = Configuration::new(Natural(7), &sample_prog);
+    let mut conf = Configuration::new(natural(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
     conf.run();
     println!("Done");
