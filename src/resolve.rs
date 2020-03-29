@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc};
 
-use super::{ParseId, ParseBlock, ParseStatement, VarId, PloopBlock, PloopStatement};
+use super::{ParseIdent, ParseBlock, ParseStatement, VarId, PloopBlock, PloopStatement};
 
 pub struct Resolver {
     reserved: BTreeSet<VarId>,
@@ -19,8 +19,8 @@ impl Resolver {
         Resolver { reserved: BTreeSet::new(), dict: BTreeMap::new(), first_unchecked: 1 }
     }
 
-    fn reserve_if_fixed(&mut self, ident: &ParseId) {
-        if let &ParseId::FromNumber(n) = ident {
+    fn reserve_if_fixed(&mut self, ident: &ParseIdent) {
+        if let &ParseIdent::FromNumber(n) = ident {
             self.reserved.insert(VarId(n));
         }
     }
@@ -61,13 +61,13 @@ impl Resolver {
         VarId(chosen)
     }
 
-    fn resolve_ident(&mut self, ident: &ParseId) -> VarId {
+    fn resolve_ident(&mut self, ident: &ParseIdent) -> VarId {
         match ident {
-            ParseId::FromNumber(var_index) => {
+            ParseIdent::FromNumber(var_index) => {
                 assert!(self.reserved.contains(&VarId(*var_index)));
                 VarId(*var_index)
             },
-            ParseId::FromString(var_name) => {
+            ParseIdent::FromString(var_name) => {
                 // TODO: Can `entry()` be used here somehow?
                 if let Some(value) = self.dict.get(var_name) {
                     value.clone()
@@ -135,7 +135,7 @@ mod test_resolver {
     #[test]
     fn test_idents_literal() {
         let input = ParseBlock::from(&[
-            ParseStatement::AddToInto(nat(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
+            ParseStatement::AddToInto(nat(42), ParseIdent::FromNumber(1337), ParseIdent::FromNumber(23)),
         ][..]);
         let expected = PloopBlock::from(&[
             PloopStatement::AddToInto(nat(42), VarId(1337), VarId(23)),
@@ -147,8 +147,8 @@ mod test_resolver {
     #[test]
     fn test_idents_named() {
         let input = ParseBlock::from(&[
-            ParseStatement::AddToInto(nat(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
-            ParseStatement::AddToInto(nat(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
+            ParseStatement::AddToInto(nat(42), ParseIdent::FromString("A".into()), ParseIdent::FromString("B".into())),
+            ParseStatement::AddToInto(nat(47), ParseIdent::FromString("C".into()), ParseIdent::FromString("A".into())),
         ][..]);
         let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
@@ -162,8 +162,8 @@ mod test_resolver {
     #[test]
     fn test_noninterference() {
         let input = ParseBlock::from(&[
-            ParseStatement::AddToInto(nat(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
-            ParseStatement::AddToInto(nat(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
+            ParseStatement::AddToInto(nat(42), ParseIdent::FromNumber(2), ParseIdent::FromString("A".into())),
+            ParseStatement::AddToInto(nat(47), ParseIdent::FromString("B".into()), ParseIdent::FromNumber(3)),
         ][..]);
         let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
@@ -177,13 +177,13 @@ mod test_resolver {
     #[test]
     fn test_recursion() {
         let input = ParseBlock::from(&[
-            ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock::from(&[
-                ParseStatement::AddToInto(nat(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
-                ParseStatement::AddToInto(nat(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
+            ParseStatement::LoopDo(ParseIdent::FromNumber(2), ParseBlock::from(&[
+                ParseStatement::AddToInto(nat(5), ParseIdent::FromString("A".into()), ParseIdent::FromString("C".into())),
+                ParseStatement::AddToInto(nat(9), ParseIdent::FromString("B".into()), ParseIdent::FromString("A".into())),
             ][..])),
-            ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock::from(&[
-                ParseStatement::AddToInto(nat(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
-                ParseStatement::AddToInto(nat(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
+            ParseStatement::WhileDo(ParseIdent::FromString("x".into()), ParseBlock::from(&[
+                ParseStatement::AddToInto(nat(8), ParseIdent::FromString("A".into()), ParseIdent::FromNumber(1)),
+                ParseStatement::AddToInto(nat(4), ParseIdent::FromString("E".into()), ParseIdent::FromString("x".into())),
             ][..])),
         ][..]);
         let expected = PloopBlock::from(&[

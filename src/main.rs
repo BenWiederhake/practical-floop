@@ -20,7 +20,7 @@ use num_traits::ops::checked::{CheckedSub};
 
 pub type Natural = BigUint;
 
-pub use token::{nat, ParseId, Token, Tokenizer};
+pub use token::{nat, ParseIdent, Token, Tokenizer};
 pub use parse::{ParseBlock, ParseStatement};
 pub use resolve::{Resolver};
 
@@ -87,15 +87,21 @@ impl PloopStatement {
         match self {
             AddToInto(amount, src, dst) => {
                 println!("AddToInto: {:?} {:?} {:?}", amount, src, dst);
-                // FIXME
-                let newval = conf.state[&src].clone() + &amount;
-                conf.state[&dst] = newval;
+                if src == dst {
+                    conf.state[&dst] += amount;
+                } else {
+                    conf.state[&dst] = conf.state[&src].clone() + amount;
+                }
             },
             SubtractFromInto(amount, src, dst) => {
                 println!("SubtractFromInto: {:?} {:?} {:?}", amount, src, dst);
-                // FIXME
-                let newval = conf.state[&src].clone().checked_sub(&amount).unwrap_or(THE_ZERO.clone());
-                conf.state[&dst] = newval;
+                if conf.state[&src] <= amount {
+                    conf.state[&dst].set_zero();
+                } else if src == dst {
+                    conf.state[&dst] -= amount;
+                } else {
+                    conf.state[&dst] = conf.state[&src].clone() - amount;
+                }
             },
             LoopDo(var, block) => {
                 println!("LoopDo: {:?} {:?}", var, block);
@@ -172,15 +178,19 @@ impl Configuration {
         self.stack.extend_from_slice(&statements);
     }
 
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self) {
         if let Some(statement) = self.stack.pop() {
             statement.apply(self);
         }
-        !self.stack.is_empty()
+    }
+
+    pub fn is_completed(&self) -> bool {
+        self.stack.is_empty()
     }
 
     pub fn run(&mut self) {
-        while self.step() {
+        while !self.is_completed() {
+            self.step()
             println!("Configuration afterwards: {:?}", self);
         }
         println!("Output is: {:?}", self.state[&VarId(0)]);

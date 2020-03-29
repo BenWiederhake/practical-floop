@@ -87,7 +87,7 @@ mod test_natural {
 }
 
 #[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
-pub enum ParseId {
+pub enum ParseIdent {
     FromNumber(u32),
     FromString(String),
 }
@@ -97,7 +97,7 @@ pub enum Token {
     Add,
     Number(Natural),
     To,
-    Ident(ParseId),
+    Ident(ParseIdent),
     Into,
     // Ident
     // ---
@@ -245,8 +245,8 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
         debug_assert!(!word.is_empty());
 
         match word.chars().next().unwrap() {
-            'v' => Ok(Ident(ParseId::FromNumber(word[1..].parse().map_err(convert_num_error)?))),
-            '_' => Ok(Ident(ParseId::FromString(word[1..].into()))),
+            'v' => Ok(Ident(ParseIdent::FromNumber(word[1..].parse().map_err(convert_num_error)?))),
+            '_' => Ok(Ident(ParseIdent::FromString(word[1..].into()))),
             '0' => Ok(Number(parse_natural(&word[1..])?)),
             _ => Err(Error::new(ErrorKind::InvalidData,
                 format!("Unknown token '{}'", word))),
@@ -357,8 +357,8 @@ mod test_tokenizer {
         let (tokens, maybe_error) = tokenize_string("do 0x64 from _thing end v1337 times");
         assert_eq!(tokens, vec![
             Do, Number(nat(100)),
-            From, Ident(ParseId::FromString("thing".to_string())),
-            End, Ident(ParseId::FromNumber(1337)),
+            From, Ident(ParseIdent::FromString("thing".to_string())),
+            End, Ident(ParseIdent::FromNumber(1337)),
             Times
         ]);
         assert!(maybe_error.is_none());
@@ -384,7 +384,7 @@ mod test_tokenizer {
     fn test_partial_variable_named() {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("add _ from");
-        assert_eq!(tokens, vec![Add, Ident(ParseId::FromString("".to_string())), From]);
+        assert_eq!(tokens, vec![Add, Ident(ParseIdent::FromString("".to_string())), From]);
         assert!(maybe_error.is_none());
     }
 

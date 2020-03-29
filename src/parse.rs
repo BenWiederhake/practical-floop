@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
 
-use super::{Natural, ParseId, Token};
+use super::{Natural, ParseIdent, Token};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseBlock(Vec<ParseStatement>);
@@ -28,11 +28,11 @@ impl From<&[ParseStatement]> for ParseBlock {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ParseStatement {
-    AddToInto(Natural, ParseId, ParseId),
-    SubtractFromInto(Natural, ParseId, ParseId),
-    LoopDo(ParseId, ParseBlock),
+    AddToInto(Natural, ParseIdent, ParseIdent),
+    SubtractFromInto(Natural, ParseIdent, ParseIdent),
+    LoopDo(ParseIdent, ParseBlock),
     DoTimes(Natural, ParseBlock),
-    WhileDo(ParseId, ParseBlock),
+    WhileDo(ParseIdent, ParseBlock),
     // Calc
     // IfThen
     // IfElse
@@ -88,7 +88,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
         }
     }
 
-    fn parse_ident(&mut self) -> Result<ParseId> {
+    fn parse_ident(&mut self) -> Result<ParseIdent> {
         match self.next()? {
             None => Err(Error::new(ErrorKind::UnexpectedEof,
                 "Found EOF while expecting an ident token.")),
@@ -192,11 +192,11 @@ mod test_parser {
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
             Add, Number(nat(100)),
-            To, Ident(ParseId::FromNumber(1337)),
-            Into, Ident(ParseId::FromString("foo".to_string())),
+            To, Ident(ParseIdent::FromNumber(1337)),
+            Into, Ident(ParseIdent::FromString("foo".to_string())),
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            AddToInto(nat(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))
+            AddToInto(nat(100), ParseIdent::FromNumber(1337), ParseIdent::FromString("foo".to_string()))
         ]));
     }
 
