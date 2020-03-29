@@ -16,7 +16,7 @@ use num_traits::ops::checked::{CheckedSub};
 #[macro_use]
 extern crate lazy_static;
 
-type Natural = BigUint;
+pub type Natural = BigUint;
 
 fn convert_bigint_error(e: ParseBigIntError) -> Error {
     /*use IntErrorKind::*;
@@ -59,7 +59,7 @@ fn parse_natural(digits: &str) -> Result<Natural> {
     Natural::from_str_radix(&digits[1..], radix).map_err(convert_bigint_error)
 }
 
-fn natural(value: u32) -> Natural {
+pub fn natural(value: u32) -> Natural {
     Natural::new(vec![value])
 }
 
@@ -114,13 +114,13 @@ mod test_natural {
 }
 
 #[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
-enum ParseId {
+pub enum ParseId {
     FromNumber(u32),
     FromString(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum Token {
+pub enum Token {
     Add,
     Number(Natural),
     To,
@@ -166,13 +166,13 @@ enum Token {
     // ---
 }
 
-struct Tokenizer<I> {
+pub struct Tokenizer<I> {
     source: I,
     errored: bool,
     peeked_reverse: Vec<char>,
 }
 
-impl<I: Iterator> Tokenizer<I> {
+impl<I> Tokenizer<I> {
     pub fn new(source: I) -> Tokenizer<I> {
         Tokenizer { source, errored: false, peeked_reverse: Vec::with_capacity(2) }
     }
@@ -181,8 +181,6 @@ impl<I: Iterator> Tokenizer<I> {
 impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
     // Heavily inspired by:
     // https://github.com/SerenityOS/serenity/blob/master/DevTools/IPCCompiler/main.cpp#L84
-
-    // TODO: None of these functions should be called by the outside.
 
     fn try_consume_one(&mut self) -> Option<Result<char>> {
         if let Some(c) = self.peeked_reverse.pop() {
@@ -427,10 +425,10 @@ mod test_tokenizer {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ParseBlock(Vec<ParseStatement>);
+pub struct ParseBlock(Vec<ParseStatement>);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum ParseStatement {
+pub enum ParseStatement {
     AddToInto(Natural, ParseId, ParseId),
     SubtractFromInto(Natural, ParseId, ParseId),
     LoopDo(ParseId, ParseBlock),
@@ -574,11 +572,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
     }
 }
 
-fn parse<I: Iterator<Item = Result<Token>>>(iter: I) -> Result<ParseBlock> {
+pub fn parse<I: Iterator<Item = Result<Token>>>(iter: I) -> Result<ParseBlock> {
     parse_peekable(iter.peekable())
 }
 
-fn parse_peekable<I: Iterator<Item = Result<Token>>>(iter: Peekable<I>) -> Result<ParseBlock> {
+pub fn parse_peekable<I: Iterator<Item = Result<Token>>>(iter: Peekable<I>) -> Result<ParseBlock> {
     Parser::new(iter).parse_block(true)
 }
 
@@ -624,14 +622,14 @@ mod test_parser {
     }
 }
 
-struct Resolver {
+pub struct Resolver {
     reserved: BTreeSet<VarId>,
     dict: BTreeMap<String, VarId>,
     first_unchecked: u32,
 }
 
 impl Resolver {
-    fn new() -> Resolver {
+    pub fn new() -> Resolver {
         /* Note that this marks index 0 as "already reserved" in the eyes of
          * `reserve_any`. This is intentional, as variable 0 will be
          * considered input/output, and *really* should not be interfered with
@@ -646,7 +644,7 @@ impl Resolver {
         }
     }
 
-    fn reserve_static(&mut self, root_block: &ParseBlock) {
+    pub fn reserve_static(&mut self, root_block: &ParseBlock) {
         let mut statements : Vec<&ParseStatement> = root_block.0.iter().collect();
 
         while let Some(statement) = statements.pop() {
@@ -702,7 +700,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_remaining(&mut self, parent_block: &ParseBlock) -> PloopBlock {
+    pub fn resolve_remaining(&mut self, parent_block: &ParseBlock) -> PloopBlock {
         let mut resolved_statements = Vec::with_capacity(parent_block.0.len());
         for statement in &parent_block.0 {
             resolved_statements.push(match statement {
@@ -740,7 +738,7 @@ impl Resolver {
     }
 }
 
-fn resolve(block: ParseBlock) -> PloopBlock {
+pub fn resolve(block: ParseBlock) -> PloopBlock {
     let mut r = Resolver::new();
     r.reserve_static(&block);
     r.resolve_remaining(&block)
@@ -829,25 +827,25 @@ mod test_resolver {
 }
 
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
-struct VarId(u32);
+pub struct VarId(u32);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct PloopBlock(Rc<Vec<PloopStatement>>);
+pub struct PloopBlock(Rc<Vec<PloopStatement>>);
 
 impl PloopBlock {
-    fn from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
+    pub fn from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
         let token_iter = Tokenizer::new(iter);
         let parsed_block = parse(token_iter)?;
         Ok(resolve(parsed_block))
     }
 
-    fn from<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
+    pub fn from<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
         PloopBlock::from_iter(string.chars().map(|c| Ok(c)))
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum PloopStatement {
+pub enum PloopStatement {
     AddToInto(Natural, VarId, VarId),
     SubtractFromInto(Natural, VarId, VarId),
     LoopDo(VarId, PloopBlock),
@@ -901,7 +899,7 @@ impl PloopStatement {
 
 // Consider a splay tree, as accesses are going to be repetitive.
 #[derive(Clone, Debug)]
-struct Environment(BTreeMap<VarId, Natural>);
+pub struct Environment(BTreeMap<VarId, Natural>);
 
 impl Environment {
     fn new(input: Natural) -> Environment {
@@ -926,13 +924,13 @@ impl IndexMut<&VarId> for Environment {
 }
 
 #[derive(Clone, Debug)]
-struct Configuration {
+pub struct Configuration {
     state: Environment,
     stack: Vec<PloopStatement>,
 }
 
 impl Configuration {
-    fn new(input: Natural, program: &PloopBlock) -> Configuration {
+    pub fn new(input: Natural, program: &PloopBlock) -> Configuration {
         let mut cfg = Configuration {
             state: Environment::new(input),
             stack: Vec::with_capacity(program.0.len()),
@@ -951,14 +949,15 @@ impl Configuration {
         self.stack.extend_from_slice(&statements);
     }
 
-    fn step(&mut self) {
-        let statement : PloopStatement = self.stack.pop().unwrap();
-        statement.apply(self);
+    pub fn step(&mut self) -> bool {
+        if let Some(statement) = self.stack.pop() {
+            statement.apply(self);
+        }
+        !self.stack.is_empty()
     }
 
-    fn run(&mut self) {
-        while !self.stack.is_empty() {
-            self.step();
+    pub fn run(&mut self) {
+        while self.step() {
             println!("Configuration afterwards: {:?}", self);
         }
         println!("Output is: {:?}", self.state[&VarId(0)]);
@@ -978,7 +977,7 @@ fn main() {
         # x0 = 2 * x1
     ").unwrap();
 
-    let mut conf = Configuration::new(natural(7), &sample_prog);
+    let mut conf = Configuration::new(natural(2), &sample_prog);
     println!("Initial configuration: {:?}", conf);
     conf.run();
     println!("Done");
