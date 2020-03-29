@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{ParseIdent, ParseBlock, ParseStatement, VarId, PloopBlock, PloopStatement};
+use super::{ParseIdent, ParseBlock, ParseStatement, VarIdent, PloopBlock, PloopStatement};
 
 pub struct Resolver {
-    reserved: BTreeSet<VarId>,
-    dict: BTreeMap<String, VarId>,
+    reserved: BTreeSet<VarIdent>,
+    dict: BTreeMap<String, VarIdent>,
     first_unchecked: u32,
 }
 
@@ -20,7 +20,7 @@ impl Resolver {
 
     fn reserve_if_fixed(&mut self, ident: &ParseIdent) {
         if let &ParseIdent::FromNumber(n) = ident {
-            self.reserved.insert(VarId(n));
+            self.reserved.insert(VarIdent(n));
         }
     }
 
@@ -52,19 +52,19 @@ impl Resolver {
         }
     }
 
-    fn reserve_any(&mut self) -> VarId {
-        let chosen = (self.first_unchecked..).filter(|x| !self.reserved.contains(&VarId(*x))).next().unwrap();
+    fn reserve_any(&mut self) -> VarIdent {
+        let chosen = (self.first_unchecked..).filter(|x| !self.reserved.contains(&VarIdent(*x))).next().unwrap();
         self.first_unchecked = chosen + 1;
-        let is_new = self.reserved.insert(VarId(chosen));
+        let is_new = self.reserved.insert(VarIdent(chosen));
         assert!(is_new);
-        VarId(chosen)
+        VarIdent(chosen)
     }
 
-    fn resolve_ident(&mut self, ident: &ParseIdent) -> VarId {
+    fn resolve_ident(&mut self, ident: &ParseIdent) -> VarIdent {
         match ident {
             ParseIdent::FromNumber(var_index) => {
-                assert!(self.reserved.contains(&VarId(*var_index)));
-                VarId(*var_index)
+                assert!(self.reserved.contains(&VarIdent(*var_index)));
+                VarIdent(*var_index)
             },
             ParseIdent::FromString(var_name) => {
                 // TODO: Can `entry()` be used here somehow?
@@ -126,7 +126,7 @@ mod test_resolver {
     #[test]
     fn test_empty() {
         let input = ParseBlock::from(&[][..]);
-        let expected = PloopBlock(Rc::new(vec![]));
+        let expected = PloopBlock::from(&[][..]);
         let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
@@ -137,7 +137,7 @@ mod test_resolver {
             ParseStatement::AddToInto(nat(42), ParseIdent::FromNumber(1337), ParseIdent::FromNumber(23)),
         ][..]);
         let expected = PloopBlock::from(&[
-            PloopStatement::AddToInto(nat(42), VarId(1337), VarId(23)),
+            PloopStatement::AddToInto(nat(42), VarIdent(1337), VarIdent(23)),
         ][..]);
         let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
@@ -151,8 +151,8 @@ mod test_resolver {
         ][..]);
         let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(nat(42), VarId(1), VarId(2)),
-            PloopStatement::AddToInto(nat(47), VarId(3), VarId(1)),
+            PloopStatement::AddToInto(nat(42), VarIdent(1), VarIdent(2)),
+            PloopStatement::AddToInto(nat(47), VarIdent(3), VarIdent(1)),
         ][..]);
         let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
@@ -166,8 +166,8 @@ mod test_resolver {
         ][..]);
         let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(nat(42), VarId(2), VarId(1)),
-            PloopStatement::AddToInto(nat(47), VarId(4), VarId(3)),
+            PloopStatement::AddToInto(nat(42), VarIdent(2), VarIdent(1)),
+            PloopStatement::AddToInto(nat(47), VarIdent(4), VarIdent(3)),
         ][..]);
         let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
@@ -187,13 +187,13 @@ mod test_resolver {
         ][..]);
         let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
-            PloopStatement::LoopDo(VarId(2), PloopBlock::from(&[
-                PloopStatement::AddToInto(nat(5), VarId(3), VarId(4)),
-                PloopStatement::AddToInto(nat(9), VarId(5), VarId(3)),
+            PloopStatement::LoopDo(VarIdent(2), PloopBlock::from(&[
+                PloopStatement::AddToInto(nat(5), VarIdent(3), VarIdent(4)),
+                PloopStatement::AddToInto(nat(9), VarIdent(5), VarIdent(3)),
             ][..])),
-            PloopStatement::WhileDo(VarId(6), PloopBlock::from(&[
-                PloopStatement::AddToInto(nat(8), VarId(3), VarId(1)),
-                PloopStatement::AddToInto(nat(4), VarId(7), VarId(6)),
+            PloopStatement::WhileDo(VarIdent(6), PloopBlock::from(&[
+                PloopStatement::AddToInto(nat(8), VarIdent(3), VarIdent(1)),
+                PloopStatement::AddToInto(nat(4), VarIdent(7), VarIdent(6)),
             ][..])),
         ][..]);
         let actual = PloopBlock::from(&input);

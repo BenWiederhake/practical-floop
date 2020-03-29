@@ -17,7 +17,7 @@ lazy_static! {
 }
 
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
-pub struct VarId(pub u32);
+pub struct VarIdent(pub u32);
 
 // TODO: Is the `Rc` here *actually* a good idea?
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,11 +56,11 @@ impl TryFrom<&str> for PloopBlock {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PloopStatement {
-    AddToInto(Natural, VarId, VarId),
-    SubtractFromInto(Natural, VarId, VarId),
-    LoopDo(VarId, PloopBlock),
+    AddToInto(Natural, VarIdent, VarIdent),
+    SubtractFromInto(Natural, VarIdent, VarIdent),
+    LoopDo(VarIdent, PloopBlock),
     DoTimes(Natural, PloopBlock),
-    WhileDo(VarId, PloopBlock),
+    WhileDo(VarIdent, PloopBlock),
     // calc
     // if
     // for _ in _ do __ end
@@ -115,26 +115,26 @@ impl PloopStatement {
 
 // TODO: Consider a splay tree, as accesses are going to be repetitive.
 #[derive(Clone, Debug)]
-pub struct Environment(BTreeMap<VarId, Natural>);
+pub struct Environment(BTreeMap<VarIdent, Natural>);
 
 impl Environment {
     pub fn new(input: Natural) -> Environment {
         let mut map = BTreeMap::new();
-        map.insert(VarId(0), input);
+        map.insert(VarIdent(0), input);
         Environment(map)
     }
 }
 
-impl Index<&VarId> for Environment {
+impl Index<&VarIdent> for Environment {
     type Output = Natural;
 
-    fn index(&self, varid: &VarId) -> &Self::Output {
+    fn index(&self, varid: &VarIdent) -> &Self::Output {
         self.0.get(varid).unwrap_or(&THE_ZERO)
     }
 }
 
-impl IndexMut<&VarId> for Environment {
-    fn index_mut(&mut self, varid: &VarId) -> &mut Self::Output {
+impl IndexMut<&VarIdent> for Environment {
+    fn index_mut(&mut self, varid: &VarIdent) -> &mut Self::Output {
         self.0.entry(*varid).or_default()
     }
 }
@@ -184,7 +184,7 @@ impl Configuration {
             self.step();
             println!("Configuration afterwards: {:?}", self);
         }
-        println!("Output is: {:?}", self.state[&VarId(0)]);
+        println!("Output is: {:?}", self.state[&VarIdent(0)]);
     }
 }
 

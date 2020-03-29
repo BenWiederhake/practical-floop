@@ -18,7 +18,7 @@ pub type Natural = BigUint;
 pub use token::{nat, ParseIdent, Token, Tokenizer};
 pub use parse::{ParseBlock, ParseStatement};
 pub use resolve::{Resolver};
-pub use exec::{VarId, PloopBlock, PloopStatement, Environment, Configuration};
+pub use exec::{VarIdent, PloopBlock, PloopStatement, Environment, Configuration};
 
 fn main() {
     let sample_prog = PloopBlock::try_from("
