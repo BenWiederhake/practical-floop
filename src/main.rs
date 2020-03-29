@@ -1,6 +1,6 @@
 #![feature(int_error_matching)]
 
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
 use std::num::{ParseIntError, IntErrorKind};
@@ -647,13 +647,217 @@ mod test_parser {
     }
 }
 
+struct Resolver {
+    reserved: BTreeSet<VarId>,
+    dict: BTreeMap<String, VarId>,
+    first_unchecked: u32,
+}
+
+impl Resolver {
+    fn new() -> Resolver {
+        /* Note that this marks index 0 as "already reserved" in the eyes of
+         * `reserve_any`. This is intentional, as variable 0 will be
+         * considered input/output, and *really* should not be interfered with
+         * by automatic assignment, even if it's not explicitly used for some
+         * reason. */
+        Resolver { reserved: BTreeSet::new(), dict: BTreeMap::new(), first_unchecked: 1 }
+    }
+
+    fn reserve_if_fixed(&mut self, ident: &ParseId) {
+        if let &ParseId::FromNumber(n) = ident {
+            self.reserved.insert(VarId(n));
+        }
+    }
+
+    fn reserve_static(&mut self, root_block: &ParseBlock) {
+        let mut statements : Vec<&ParseStatement> = root_block.0.iter().collect();
+
+        while let Some(statement) = statements.pop() {
+            match statement {
+                ParseStatement::AddToInto(_nat, a, b) => {
+                    self.reserve_if_fixed(&a);
+                    self.reserve_if_fixed(&b);
+                },
+                ParseStatement::SubtractFromInto(_, a, b) => {
+                    self.reserve_if_fixed(&a);
+                    self.reserve_if_fixed(&b);
+                },
+                ParseStatement::LoopDo(a, subblock) => {
+                    self.reserve_if_fixed(&a);
+                    statements.extend(&subblock.0);
+                },
+                ParseStatement::DoTimes(_, subblock) => {
+                    statements.extend(&subblock.0);
+                },
+                ParseStatement::WhileDo(a, subblock) => {
+                    self.reserve_if_fixed(&a);
+                    statements.extend(&subblock.0);
+                },
+            }
+        }
+    }
+
+    fn reserve_any(&mut self) -> VarId {
+        let chosen = (self.first_unchecked..).filter(|x| !self.reserved.contains(&VarId(*x))).next().unwrap();
+        self.first_unchecked = chosen + 1;
+        let is_new = self.reserved.insert(VarId(chosen));
+        assert!(is_new);
+        VarId(chosen)
+    }
+
+    fn resolve_ident(&mut self, ident: &ParseId) -> VarId {
+        match ident {
+            ParseId::FromNumber(var_index) => {
+                assert!(self.reserved.contains(&VarId(*var_index)));
+                VarId(*var_index)
+            },
+            ParseId::FromString(var_name) => {
+                // TODO: Can `entry()` be used here somehow?
+                if let Some(value) = self.dict.get(var_name) {
+                    value.clone()
+                } else {
+                    let value = self.reserve_any();
+                    // TODO: Get rid of the string clone?
+                    self.dict.insert(var_name.clone(), value);
+                    value
+                }
+            },
+        }
+    }
+
+    fn resolve_remaining(&mut self, parent_block: &ParseBlock) -> PloopBlock {
+        let mut resolved_statements = Vec::with_capacity(parent_block.0.len());
+        for statement in &parent_block.0 {
+            resolved_statements.push(match statement {
+                ParseStatement::AddToInto(amount, src, dst) => {
+                    PloopStatement::AddToInto(
+                        amount.clone(),
+                        self.resolve_ident(src),
+                        self.resolve_ident(dst))
+                },
+                ParseStatement::SubtractFromInto(amount, src, dst) => {
+                    PloopStatement::SubtractFromInto(
+                        amount.clone(),
+                        self.resolve_ident(src),
+                        self.resolve_ident(dst))
+                },
+                ParseStatement::LoopDo(var, subblock) => {
+                    PloopStatement::LoopDo(
+                        self.resolve_ident(var),
+                        self.resolve_remaining(subblock))
+                },
+                ParseStatement::DoTimes(amount, subblock) => {
+                    PloopStatement::DoTimes(
+                        amount.clone(),
+                        self.resolve_remaining(subblock))
+                },
+                ParseStatement::WhileDo(var, subblock) => {
+                    PloopStatement::WhileDo(
+                        self.resolve_ident(var),
+                        self.resolve_remaining(subblock))
+                },
+            });
+        }
+
+        PloopBlock(Rc::new(resolved_statements))
+    }
+}
+
+fn resolve(block: ParseBlock) -> PloopBlock {
+    let mut r = Resolver::new();
+    r.reserve_static(&block);
+    r.resolve_remaining(&block)
+}
+
+#[cfg(test)]
+mod test_resolver {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let input = ParseBlock(vec![]);
+        let actual = PloopBlock(Rc::new(vec![]));
+        let expected = resolve(input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_idents_literal() {
+        let input = ParseBlock(vec![
+            ParseStatement::AddToInto(Natural(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
+        ]);
+        let actual = PloopBlock(Rc::new(vec![
+            PloopStatement::AddToInto(Natural(42), VarId(1337), VarId(23)),
+        ]));
+        let expected = resolve(input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_idents_named() {
+        let input = ParseBlock(vec![
+            ParseStatement::AddToInto(Natural(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
+            ParseStatement::AddToInto(Natural(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
+        ]);
+        let actual = PloopBlock(Rc::new(vec![
+            /* Note: `0` is reserved. */
+            PloopStatement::AddToInto(Natural(42), VarId(1), VarId(2)),
+            PloopStatement::AddToInto(Natural(47), VarId(3), VarId(1)),
+        ]));
+        let expected = resolve(input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_noninterference() {
+        let input = ParseBlock(vec![
+            ParseStatement::AddToInto(Natural(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
+            ParseStatement::AddToInto(Natural(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
+        ]);
+        let actual = PloopBlock(Rc::new(vec![
+            /* Note: `0` is reserved. */
+            PloopStatement::AddToInto(Natural(42), VarId(2), VarId(1)),
+            PloopStatement::AddToInto(Natural(47), VarId(4), VarId(3)),
+        ]));
+        let expected = resolve(input);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_recursion() {
+        let input = ParseBlock(vec![
+            ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock(vec![
+                ParseStatement::AddToInto(Natural(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
+                ParseStatement::AddToInto(Natural(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
+            ])),
+            ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock(vec![
+                ParseStatement::AddToInto(Natural(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
+                ParseStatement::AddToInto(Natural(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
+            ])),
+        ]);
+        let actual = PloopBlock(Rc::new(vec![
+            /* Note: `0` is reserved. */
+            PloopStatement::LoopDo(VarId(2), PloopBlock(Rc::new(vec![
+                PloopStatement::AddToInto(Natural(5), VarId(3), VarId(4)),
+                PloopStatement::AddToInto(Natural(9), VarId(5), VarId(3)),
+            ]))),
+            PloopStatement::WhileDo(VarId(6), PloopBlock(Rc::new(vec![
+                PloopStatement::AddToInto(Natural(8), VarId(3), VarId(1)),
+                PloopStatement::AddToInto(Natural(4), VarId(7), VarId(6)),
+            ]))),
+        ]));
+        let expected = resolve(input);
+        assert_eq!(expected, actual);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
 struct VarId(u32);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct PloopBlock(Rc<Vec<PloopStatement>>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum PloopStatement {
     AddToInto(Natural, VarId, VarId),
     SubtractFromInto(Natural, VarId, VarId),
