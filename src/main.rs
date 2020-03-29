@@ -74,42 +74,42 @@ mod test_natural {
 
     #[test]
     fn test_add() {
-        assert_eq!(Natural(42) + &Natural(1337), Natural(42 + 1337));
-        assert_eq!(Natural(0) + &Natural(0), Natural(0));
+        assert_eq!(natural(42) + &natural(1337), natural(42 + 1337));
+        assert_eq!(natural(0) + &natural(0), natural(0));
     }
 
     #[test]
     fn test_sub() {
-        assert_eq!(Natural(0).checked_sub(&Natural(0)), Natural(0));
-        assert_eq!(Natural(5).checked_sub(&Natural(3)), Natural(2));
-        assert_eq!(Natural(5).checked_sub(&Natural(55)), Natural(0));
+        assert_eq!(natural(0).checked_sub(&natural(0)), Some(natural(0)));
+        assert_eq!(natural(5).checked_sub(&natural(3)), Some(natural(2)));
+        assert_eq!(natural(5).checked_sub(&natural(55)), None);
     }
 
     #[test]
     fn test_clonable() {
-        let x = Natural(123);
-        let y = x.clone() + &Natural(321);
-        let z = y.clone().checked_sub(&Natural(40));
-        assert_eq!(x, &Natural(123));
-        assert_eq!(y, &Natural(444));
-        assert_eq!(z, &Natural(404));
+        let x = natural(123);
+        let y = x.clone() + &natural(321);
+        let z = y.clone().checked_sub(&natural(40)).unwrap();
+        assert_eq!(x, natural(123));
+        assert_eq!(y, natural(444));
+        assert_eq!(z, natural(404));
     }
 
     #[test]
     fn test_basic_parsing() {
-        assert_eq!(Natural(0), "x0".parse().unwrap());
-        assert_eq!(Natural(0x10), "x10".parse().unwrap());
-        assert_eq!(Natural(1337), "x539".parse().unwrap());
-        assert_eq!(Natural(0xFFFFFFFF), "xFFFFFFFF".parse().unwrap());
-        assert_eq!(Natural(0xFFFFFFFFFFFFFFFF), "xFFFFFFFFFFFFFFFF".parse().unwrap());
+        assert_eq!(natural(0), parse_natural("x0").unwrap());
+        assert_eq!(natural(0x10), parse_natural("x10").unwrap());
+        assert_eq!(natural(1337), parse_natural("x539").unwrap());
+        assert_eq!(natural(0xFFFFFFFF), parse_natural("xFFFFFFFF").unwrap());
+        assert_eq!(Natural::from(0xFFFFFFFFFFFFFFFFu64), parse_natural("xFFFFFFFFFFFFFFFF").unwrap());
         assert!("xG".parse::<Natural>().is_err());
     }
 
     #[test]
-    #[ignore = "Currently fails because `Natural` uses a bounded-size implementation (u64)."]
     fn test_large_naturals() {
-        assert!(!"x10000000000000000".parse::<Natural>().is_err());
-        assert!(!"x100000000000000000000000000000000".parse::<Natural>().is_err());
+        assert!(!parse_natural("x10").is_err());
+        assert!(!parse_natural("x10000000000000000").is_err());
+        assert!(!parse_natural("x100000000000000000000000000000000").is_err());
     }
 }
 
@@ -385,7 +385,7 @@ mod test_tokenizer {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("do 0x64 from _thing end v1337 times");
         assert_eq!(tokens, vec![
-            Do, Number(Natural(100)),
+            Do, Number(natural(100)),
             From, Ident(ParseId::FromString("thing".to_string())),
             End, Ident(ParseId::FromNumber(1337)),
             Times
@@ -601,12 +601,12 @@ mod test_parser {
         use Token::*;
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
-            Add, Number(Natural(100)),
+            Add, Number(natural(100)),
             To, Ident(ParseId::FromNumber(1337)),
             Into, Ident(ParseId::FromString("foo".to_string())),
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            AddToInto(Natural(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))
+            AddToInto(natural(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))
         ]));
     }
 
@@ -615,11 +615,11 @@ mod test_parser {
         use Token::*;
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
-            Do, Number(Natural(100)), Times,
+            Do, Number(natural(100)), Times,
             End,
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            DoTimes(Natural(100), ParseBlock(vec![])),
+            DoTimes(natural(100), ParseBlock(vec![])),
         ]));
     }
 }
@@ -761,10 +761,10 @@ mod test_resolver {
     #[test]
     fn test_idents_literal() {
         let input = ParseBlock(vec![
-            ParseStatement::AddToInto(Natural(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
+            ParseStatement::AddToInto(natural(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
         ]);
         let actual = PloopBlock(Rc::new(vec![
-            PloopStatement::AddToInto(Natural(42), VarId(1337), VarId(23)),
+            PloopStatement::AddToInto(natural(42), VarId(1337), VarId(23)),
         ]));
         let expected = resolve(input);
         assert_eq!(expected, actual);
@@ -773,13 +773,13 @@ mod test_resolver {
     #[test]
     fn test_idents_named() {
         let input = ParseBlock(vec![
-            ParseStatement::AddToInto(Natural(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
-            ParseStatement::AddToInto(Natural(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
+            ParseStatement::AddToInto(natural(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
+            ParseStatement::AddToInto(natural(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
         ]);
         let actual = PloopBlock(Rc::new(vec![
             /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(Natural(42), VarId(1), VarId(2)),
-            PloopStatement::AddToInto(Natural(47), VarId(3), VarId(1)),
+            PloopStatement::AddToInto(natural(42), VarId(1), VarId(2)),
+            PloopStatement::AddToInto(natural(47), VarId(3), VarId(1)),
         ]));
         let expected = resolve(input);
         assert_eq!(expected, actual);
@@ -788,13 +788,13 @@ mod test_resolver {
     #[test]
     fn test_noninterference() {
         let input = ParseBlock(vec![
-            ParseStatement::AddToInto(Natural(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
-            ParseStatement::AddToInto(Natural(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
+            ParseStatement::AddToInto(natural(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
+            ParseStatement::AddToInto(natural(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
         ]);
         let actual = PloopBlock(Rc::new(vec![
             /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(Natural(42), VarId(2), VarId(1)),
-            PloopStatement::AddToInto(Natural(47), VarId(4), VarId(3)),
+            PloopStatement::AddToInto(natural(42), VarId(2), VarId(1)),
+            PloopStatement::AddToInto(natural(47), VarId(4), VarId(3)),
         ]));
         let expected = resolve(input);
         assert_eq!(expected, actual);
@@ -804,23 +804,23 @@ mod test_resolver {
     fn test_recursion() {
         let input = ParseBlock(vec![
             ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock(vec![
-                ParseStatement::AddToInto(Natural(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
-                ParseStatement::AddToInto(Natural(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
+                ParseStatement::AddToInto(natural(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
+                ParseStatement::AddToInto(natural(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
             ])),
             ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock(vec![
-                ParseStatement::AddToInto(Natural(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
-                ParseStatement::AddToInto(Natural(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
+                ParseStatement::AddToInto(natural(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
+                ParseStatement::AddToInto(natural(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
             ])),
         ]);
         let actual = PloopBlock(Rc::new(vec![
             /* Note: `0` is reserved. */
             PloopStatement::LoopDo(VarId(2), PloopBlock(Rc::new(vec![
-                PloopStatement::AddToInto(Natural(5), VarId(3), VarId(4)),
-                PloopStatement::AddToInto(Natural(9), VarId(5), VarId(3)),
+                PloopStatement::AddToInto(natural(5), VarId(3), VarId(4)),
+                PloopStatement::AddToInto(natural(9), VarId(5), VarId(3)),
             ]))),
             PloopStatement::WhileDo(VarId(6), PloopBlock(Rc::new(vec![
-                PloopStatement::AddToInto(Natural(8), VarId(3), VarId(1)),
-                PloopStatement::AddToInto(Natural(4), VarId(7), VarId(6)),
+                PloopStatement::AddToInto(natural(8), VarId(3), VarId(1)),
+                PloopStatement::AddToInto(natural(4), VarId(7), VarId(6)),
             ]))),
         ]));
         let expected = resolve(input);
