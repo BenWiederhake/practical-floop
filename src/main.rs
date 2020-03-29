@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
 use std::num::{ParseIntError, IntErrorKind};
-use std::ops::{Add, Sub, Index, IndexMut};
+use std::ops::{Add, Deref, Sub, Index, IndexMut};
 use std::rc::{Rc};
 use std::str::{FromStr};
 
@@ -15,14 +15,6 @@ use std::str::{FromStr};
 // This makes transition to "BigNum" easier, I hope?
 struct Natural(u64);
 
-/*impl Add<u64> for Natural {
-    type Output = Natural;
-
-    fn add(self, rhs: u64) -> Natural {
-        Natural(self.0.checked_add(rhs).unwrap())
-    }
-}*/
-
 impl Add<Natural> for Natural {
     type Output = Natural;
 
@@ -30,14 +22,6 @@ impl Add<Natural> for Natural {
         Natural(self.0.checked_add(rhs.0).unwrap())
     }
 }
-
-/*impl Sub<u64> for Natural {
-    type Output = Natural;
-
-    fn sub(self, rhs: u64) -> Natural {
-        Natural(self.0.saturating_sub(rhs))
-    }
-}*/
 
 impl Sub<Natural> for Natural {
     type Output = Natural;
@@ -536,7 +520,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
             },
             Token::Subtract => {
                 let amount = self.parse_number()?;
-                self.parse_expected(Token::To)?;
+                self.parse_expected(Token::From)?;
                 let src = self.parse_ident()?;
                 self.parse_expected(Token::Into)?;
                 let dst = self.parse_ident()?;
@@ -857,6 +841,18 @@ struct VarId(u32);
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PloopBlock(Rc<Vec<PloopStatement>>);
 
+impl PloopBlock {
+    fn from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
+        let token_iter = Tokenizer::new(iter);
+        let parsed_block = parse(token_iter)?;
+        Ok(resolve(parsed_block))
+    }
+
+    fn from<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
+        PloopBlock::from_iter(string.chars().map(|c| Ok(c)))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PloopStatement {
     AddToInto(Natural, VarId, VarId),
@@ -974,22 +970,17 @@ impl Configuration {
 }
 
 fn main() {
-    /*let data = fs::read_to_string("/etc/hosts").expect("Unable to read file");
-    println!("{}", data);*/
-
-    use PloopStatement::*;
-    let sample_prog = PloopBlock(Rc::new(vec![
-        SubtractFromInto(Natural(5), VarId(0), VarId(1)),
-        AddToInto(Natural(5), VarId(1), VarId(1)),
-        AddToInto(Natural(0), VarId(2), VarId(0)),
-        LoopDo(VarId(1), PloopBlock(Rc::new(vec![
-            AddToInto(Natural(2), VarId(0), VarId(0)),
-        ]))),
-        WhileDo(VarId(3), PloopBlock(Rc::new(vec![]))),
-        // This implements:
-        // x1 = min(5, x0)
-        // x0 = 2 * x1
-    ]));
+    let sample_prog = PloopBlock::from("
+        subtract 0x5 from v0 into v1
+        add 0x5 to v1 into v1
+        add 0x0 to v2 into v0
+        loop v1 do
+            add 0x2 to v0 into v0
+        end
+        # This implements:
+        # x1 = min(5, x0)
+        # x0 = 2 * x1
+    ").unwrap();
 
     let mut conf = Configuration::new(Natural(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
