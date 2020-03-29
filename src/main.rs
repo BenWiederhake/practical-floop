@@ -4,9 +4,10 @@
 extern crate lazy_static;
 
 mod parse;
+mod resolve;
 mod token;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap};
 use std::io::{Result};
 use std::ops::{Deref, Index, IndexMut};
 use std::rc::{Rc};
@@ -18,216 +19,13 @@ use num_traits::ops::checked::{CheckedSub};
 
 pub type Natural = BigUint;
 
-pub use token::{natural, ParseId, Token, Tokenizer};
+pub use token::{nat, ParseId, Token, Tokenizer};
 pub use parse::{ParseBlock, ParseStatement};
+pub use resolve::{Resolver};
 
 // TODO: Can this be done without lazy_static?
 lazy_static! {
     static ref THE_ZERO: Natural = Natural::zero();
-}
-
-pub struct Resolver {
-    reserved: BTreeSet<VarId>,
-    dict: BTreeMap<String, VarId>,
-    first_unchecked: u32,
-}
-
-impl Resolver {
-    pub fn new() -> Resolver {
-        /* Note that this marks index 0 as "already reserved" in the eyes of
-         * `reserve_any`. This is intentional, as variable 0 will be
-         * considered input/output, and *really* should not be interfered with
-         * by automatic assignment, even if it's not explicitly used for some
-         * reason. */
-        Resolver { reserved: BTreeSet::new(), dict: BTreeMap::new(), first_unchecked: 1 }
-    }
-
-    fn reserve_if_fixed(&mut self, ident: &ParseId) {
-        if let &ParseId::FromNumber(n) = ident {
-            self.reserved.insert(VarId(n));
-        }
-    }
-
-    pub fn reserve_static(&mut self, root_block: &ParseBlock) {
-        let mut statements : Vec<&ParseStatement> = root_block.statements().iter().collect();
-
-        while let Some(statement) = statements.pop() {
-            match statement {
-                ParseStatement::AddToInto(_nat, a, b) => {
-                    self.reserve_if_fixed(&a);
-                    self.reserve_if_fixed(&b);
-                },
-                ParseStatement::SubtractFromInto(_, a, b) => {
-                    self.reserve_if_fixed(&a);
-                    self.reserve_if_fixed(&b);
-                },
-                ParseStatement::LoopDo(a, subblock) => {
-                    self.reserve_if_fixed(&a);
-                    statements.extend(subblock.statements());
-                },
-                ParseStatement::DoTimes(_, subblock) => {
-                    statements.extend(subblock.statements());
-                },
-                ParseStatement::WhileDo(a, subblock) => {
-                    self.reserve_if_fixed(&a);
-                    statements.extend(subblock.statements());
-                },
-            }
-        }
-    }
-
-    fn reserve_any(&mut self) -> VarId {
-        let chosen = (self.first_unchecked..).filter(|x| !self.reserved.contains(&VarId(*x))).next().unwrap();
-        self.first_unchecked = chosen + 1;
-        let is_new = self.reserved.insert(VarId(chosen));
-        assert!(is_new);
-        VarId(chosen)
-    }
-
-    fn resolve_ident(&mut self, ident: &ParseId) -> VarId {
-        match ident {
-            ParseId::FromNumber(var_index) => {
-                assert!(self.reserved.contains(&VarId(*var_index)));
-                VarId(*var_index)
-            },
-            ParseId::FromString(var_name) => {
-                // TODO: Can `entry()` be used here somehow?
-                if let Some(value) = self.dict.get(var_name) {
-                    value.clone()
-                } else {
-                    let value = self.reserve_any();
-                    // TODO: Get rid of the string clone?
-                    self.dict.insert(var_name.clone(), value);
-                    value
-                }
-            },
-        }
-    }
-
-    pub fn resolve_remaining(&mut self, parent_block: &ParseBlock) -> PloopBlock {
-        let mut resolved_statements = Vec::with_capacity(parent_block.statements().len());
-        for statement in parent_block.statements() {
-            resolved_statements.push(match statement {
-                ParseStatement::AddToInto(amount, src, dst) => {
-                    PloopStatement::AddToInto(
-                        amount.clone(),
-                        self.resolve_ident(src),
-                        self.resolve_ident(dst))
-                },
-                ParseStatement::SubtractFromInto(amount, src, dst) => {
-                    PloopStatement::SubtractFromInto(
-                        amount.clone(),
-                        self.resolve_ident(src),
-                        self.resolve_ident(dst))
-                },
-                ParseStatement::LoopDo(var, subblock) => {
-                    PloopStatement::LoopDo(
-                        self.resolve_ident(var),
-                        self.resolve_remaining(subblock))
-                },
-                ParseStatement::DoTimes(amount, subblock) => {
-                    PloopStatement::DoTimes(
-                        amount.clone(),
-                        self.resolve_remaining(subblock))
-                },
-                ParseStatement::WhileDo(var, subblock) => {
-                    PloopStatement::WhileDo(
-                        self.resolve_ident(var),
-                        self.resolve_remaining(subblock))
-                },
-            });
-        }
-
-        PloopBlock(Rc::new(resolved_statements))
-    }
-}
-
-pub fn resolve(block: ParseBlock) -> PloopBlock {
-    let mut r = Resolver::new();
-    r.reserve_static(&block);
-    r.resolve_remaining(&block)
-}
-
-#[cfg(test)]
-mod test_resolver {
-    use super::*;
-
-    #[test]
-    fn test_empty() {
-        let input = ParseBlock(vec![]);
-        let actual = PloopBlock(Rc::new(vec![]));
-        let expected = resolve(input);
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_idents_literal() {
-        let input = ParseBlock(vec![
-            ParseStatement::AddToInto(natural(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
-        ]);
-        let actual = PloopBlock(Rc::new(vec![
-            PloopStatement::AddToInto(natural(42), VarId(1337), VarId(23)),
-        ]));
-        let expected = resolve(input);
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_idents_named() {
-        let input = ParseBlock(vec![
-            ParseStatement::AddToInto(natural(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
-            ParseStatement::AddToInto(natural(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
-        ]);
-        let actual = PloopBlock(Rc::new(vec![
-            /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(natural(42), VarId(1), VarId(2)),
-            PloopStatement::AddToInto(natural(47), VarId(3), VarId(1)),
-        ]));
-        let expected = resolve(input);
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_noninterference() {
-        let input = ParseBlock(vec![
-            ParseStatement::AddToInto(natural(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
-            ParseStatement::AddToInto(natural(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
-        ]);
-        let actual = PloopBlock(Rc::new(vec![
-            /* Note: `0` is reserved. */
-            PloopStatement::AddToInto(natural(42), VarId(2), VarId(1)),
-            PloopStatement::AddToInto(natural(47), VarId(4), VarId(3)),
-        ]));
-        let expected = resolve(input);
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_recursion() {
-        let input = ParseBlock(vec![
-            ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock(vec![
-                ParseStatement::AddToInto(natural(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
-                ParseStatement::AddToInto(natural(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
-            ])),
-            ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock(vec![
-                ParseStatement::AddToInto(natural(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
-                ParseStatement::AddToInto(natural(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
-            ])),
-        ]);
-        let actual = PloopBlock(Rc::new(vec![
-            /* Note: `0` is reserved. */
-            PloopStatement::LoopDo(VarId(2), PloopBlock(Rc::new(vec![
-                PloopStatement::AddToInto(natural(5), VarId(3), VarId(4)),
-                PloopStatement::AddToInto(natural(9), VarId(5), VarId(3)),
-            ]))),
-            PloopStatement::WhileDo(VarId(6), PloopBlock(Rc::new(vec![
-                PloopStatement::AddToInto(natural(8), VarId(3), VarId(1)),
-                PloopStatement::AddToInto(natural(4), VarId(7), VarId(6)),
-            ]))),
-        ]));
-        let expected = resolve(input);
-        assert_eq!(expected, actual);
-    }
 }
 
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
@@ -237,14 +35,25 @@ pub struct VarId(u32);
 pub struct PloopBlock(Rc<Vec<PloopStatement>>);
 
 impl PloopBlock {
+    // FIXME: Move to `From<XXX>`
+    pub fn from_parsed(block: ParseBlock) -> PloopBlock {
+        let mut r = Resolver::new();
+        r.reserve_static(&block);
+        r.resolve_remaining(&block)
+    }
+
     pub fn from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
         let token_iter = Tokenizer::new(iter);
         let parsed_block = ParseBlock::from(token_iter)?;
-        Ok(resolve(parsed_block))
+        Ok(PloopBlock::from_parsed(parsed_block))
     }
 
-    pub fn from<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
+    pub fn from_string<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
         PloopBlock::from_iter(string.chars().map(|c| Ok(c)))
+    }
+
+    pub fn from_statements(statements: &[PloopStatement]) -> PloopBlock {
+        PloopBlock(Rc::new(Vec::from(statements)))
     }
 }
 
@@ -285,7 +94,7 @@ impl PloopStatement {
             DoTimes(mut amount, block) => {
                 println!("DoTimes: {:?} {:?}", amount, block);
                 if !amount.is_zero() {
-                    amount = amount.checked_sub(&natural(1)).unwrap();
+                    amount = amount.checked_sub(&nat(1)).unwrap();
                     conf.push(DoTimes(amount, block.clone()));
                     conf.push_all(&block);
                 }
@@ -369,7 +178,7 @@ impl Configuration {
 }
 
 fn main() {
-    let sample_prog = PloopBlock::from("
+    let sample_prog = PloopBlock::from_string("
         subtract 0x5 from v0 into v1
         add 0x5 to v1 into v1
         add 0x0 to v2 into v0
@@ -381,7 +190,7 @@ fn main() {
         # x0 = 2 * x1
     ").unwrap();
 
-    let mut conf = Configuration::new(natural(2), &sample_prog);
+    let mut conf = Configuration::new(nat(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
     conf.run();
     println!("Done");

@@ -36,44 +36,45 @@ fn parse_natural(digits: &str) -> Result<Natural> {
     )
 }
 
-pub fn natural(value: u32) -> Natural {
-    Natural::new(vec![value])
+pub fn nat(n: u64) -> Natural {
+    Natural::from(n)
 }
 
 #[cfg(test)]
 mod test_natural {
     use super::*;
+    use num_traits::ops::checked::{CheckedSub};
 
     #[test]
     fn test_add() {
-        assert_eq!(natural(42) + &natural(1337), natural(42 + 1337));
-        assert_eq!(natural(0) + &natural(0), natural(0));
+        assert_eq!(nat(42) + &nat(1337), nat(42 + 1337));
+        assert_eq!(nat(0) + &nat(0), nat(0));
     }
 
     #[test]
     fn test_sub() {
-        assert_eq!(natural(0).checked_sub(&natural(0)), Some(natural(0)));
-        assert_eq!(natural(5).checked_sub(&natural(3)), Some(natural(2)));
-        assert_eq!(natural(5).checked_sub(&natural(55)), None);
+        assert_eq!(nat(0).checked_sub(&nat(0)), Some(nat(0)));
+        assert_eq!(nat(5).checked_sub(&nat(3)), Some(nat(2)));
+        assert_eq!(nat(5).checked_sub(&nat(55)), None);
     }
 
     #[test]
     fn test_clonable() {
-        let x = natural(123);
-        let y = x.clone() + &natural(321);
-        let z = y.clone().checked_sub(&natural(40)).unwrap();
-        assert_eq!(x, natural(123));
-        assert_eq!(y, natural(444));
-        assert_eq!(z, natural(404));
+        let x = nat(123);
+        let y = x.clone() + &nat(321);
+        let z = y.clone().checked_sub(&nat(40)).unwrap();
+        assert_eq!(x, nat(123));
+        assert_eq!(y, nat(444));
+        assert_eq!(z, nat(404));
     }
 
     #[test]
     fn test_basic_parsing() {
-        assert_eq!(natural(0), parse_natural("x0").unwrap());
-        assert_eq!(natural(0x10), parse_natural("x10").unwrap());
-        assert_eq!(natural(1337), parse_natural("x539").unwrap());
-        assert_eq!(natural(0xFFFFFFFF), parse_natural("xFFFFFFFF").unwrap());
-        assert_eq!(Natural::from(0xFFFFFFFFFFFFFFFFu64), parse_natural("xFFFFFFFFFFFFFFFF").unwrap());
+        assert_eq!(nat(0), parse_natural("x0").unwrap());
+        assert_eq!(nat(0x10), parse_natural("x10").unwrap());
+        assert_eq!(nat(1337), parse_natural("x539").unwrap());
+        assert_eq!(nat(0xFFFFFFFF), parse_natural("xFFFFFFFF").unwrap());
+        assert_eq!(nat(0xFFFFFFFFFFFFFFFFu64), parse_natural("xFFFFFFFFFFFFFFFF").unwrap());
         assert!("xG".parse::<Natural>().is_err());
     }
 
@@ -355,7 +356,7 @@ mod test_tokenizer {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("do 0x64 from _thing end v1337 times");
         assert_eq!(tokens, vec![
-            Do, Number(natural(100)),
+            Do, Number(nat(100)),
             From, Ident(ParseId::FromString("thing".to_string())),
             End, Ident(ParseId::FromNumber(1337)),
             Times

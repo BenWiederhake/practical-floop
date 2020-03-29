@@ -1,9 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
 
-use super::{Natural};
-
-use super::token::{ParseId, Token};
+use super::{Natural, ParseId, Token};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseBlock(Vec<ParseStatement>);
@@ -11,6 +9,10 @@ pub struct ParseBlock(Vec<ParseStatement>);
 impl ParseBlock {
     pub fn from<I: Iterator<Item = Result<Token>>>(iter: I) -> Result<ParseBlock> {
         ParseBlock::from_peekable(iter.peekable())
+    }
+
+    pub fn from_statements(statements: &[ParseStatement]) -> ParseBlock {
+        ParseBlock(Vec::from(statements))
     }
 
     pub fn from_peekable<I: Iterator<Item = Result<Token>>>(iter: Peekable<I>) -> Result<ParseBlock> {
@@ -170,6 +172,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
 #[cfg(test)]
 mod test_parser {
     use super::*;
+    use super::super::nat;
 
     fn parse_token_vec(vec: Vec<Token>) -> Result<ParseBlock> {
         ParseBlock::from(vec.into_iter().map(|t| Ok(t)))
@@ -186,12 +189,12 @@ mod test_parser {
         use Token::*;
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
-            Add, Number(natural(100)),
+            Add, Number(nat(100)),
             To, Ident(ParseId::FromNumber(1337)),
             Into, Ident(ParseId::FromString("foo".to_string())),
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            AddToInto(natural(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))
+            AddToInto(nat(100), ParseId::FromNumber(1337), ParseId::FromString("foo".to_string()))
         ]));
     }
 
@@ -200,11 +203,11 @@ mod test_parser {
         use Token::*;
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
-            Do, Number(natural(100)), Times,
+            Do, Number(nat(100)), Times,
             End,
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            DoTimes(natural(100), ParseBlock(vec![])),
+            DoTimes(nat(100), ParseBlock(vec![])),
         ]));
     }
 }
