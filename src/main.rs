@@ -8,8 +8,9 @@ mod resolve;
 mod token;
 
 use std::collections::{BTreeMap};
-use std::io::{Result};
-use std::ops::{Deref, Index, IndexMut};
+use std::convert::{TryFrom};
+use std::io::{Error, Result};
+use std::ops::{Index, IndexMut};
 use std::rc::{Rc};
 //use std::fs;
 
@@ -31,29 +32,38 @@ lazy_static! {
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
 pub struct VarId(u32);
 
+// TODO: Is the `Rc` here *actually* a good idea?
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PloopBlock(Rc<Vec<PloopStatement>>);
 
 impl PloopBlock {
-    // FIXME: Move to `From<XXX>`
-    pub fn from_parsed(block: ParseBlock) -> PloopBlock {
-        let mut r = Resolver::new();
-        r.reserve_static(&block);
-        r.resolve_remaining(&block)
-    }
-
-    pub fn from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
+    /* Cannot impl TryFrom<> for a trait. */
+    pub fn try_from_iter<I: Iterator<Item = Result<char>>>(iter: I) -> Result<PloopBlock> {
         let token_iter = Tokenizer::new(iter);
-        let parsed_block = ParseBlock::from(token_iter)?;
-        Ok(PloopBlock::from_parsed(parsed_block))
+        let parsed_block = ParseBlock::try_from_iter(token_iter)?;
+        Ok(PloopBlock::from(&parsed_block))
     }
+}
 
-    pub fn from_string<S: Deref<Target=str>>(string: S) -> Result<PloopBlock> {
-        PloopBlock::from_iter(string.chars().map(|c| Ok(c)))
+impl From<&ParseBlock> for PloopBlock {
+    fn from(block: &ParseBlock) -> PloopBlock {
+        let mut r = Resolver::new();
+        r.reserve_static(block);
+        r.resolve_remaining(block)
     }
+}
 
-    pub fn from_statements(statements: &[PloopStatement]) -> PloopBlock {
+impl From<&[PloopStatement]> for PloopBlock {
+    fn from(statements: &[PloopStatement]) -> PloopBlock {
         PloopBlock(Rc::new(Vec::from(statements)))
+    }
+}
+
+impl TryFrom<&str> for PloopBlock {
+    type Error = Error;
+
+    fn try_from(string: &str) -> Result<PloopBlock> {
+        PloopBlock::try_from_iter(string.chars().map(|c| Ok(c)))
     }
 }
 
@@ -178,7 +188,7 @@ impl Configuration {
 }
 
 fn main() {
-    let sample_prog = PloopBlock::from_string("
+    let sample_prog = PloopBlock::try_from("
         subtract 0x5 from v0 into v1
         add 0x5 to v1 into v1
         add 0x0 to v2 into v0

@@ -7,20 +7,22 @@ use super::{Natural, ParseId, Token};
 pub struct ParseBlock(Vec<ParseStatement>);
 
 impl ParseBlock {
-    pub fn from<I: Iterator<Item = Result<Token>>>(iter: I) -> Result<ParseBlock> {
-        ParseBlock::from_peekable(iter.peekable())
+    pub fn try_from_iter<I: Iterator<Item = Result<Token>>>(iter: I) -> Result<ParseBlock> {
+        ParseBlock::try_from_peekable(iter.peekable())
     }
 
-    pub fn from_statements(statements: &[ParseStatement]) -> ParseBlock {
-        ParseBlock(Vec::from(statements))
-    }
-
-    pub fn from_peekable<I: Iterator<Item = Result<Token>>>(iter: Peekable<I>) -> Result<ParseBlock> {
+    pub fn try_from_peekable<I: Iterator<Item = Result<Token>>>(iter: Peekable<I>) -> Result<ParseBlock> {
         Parser::new(iter).parse_block(true)
     }
 
     pub fn statements(&self) -> &[ParseStatement] {
         &self.0
+    }
+}
+
+impl From<&[ParseStatement]> for ParseBlock {
+    fn from(statements: &[ParseStatement]) -> ParseBlock {
+        ParseBlock(Vec::from(statements))
     }
 }
 
@@ -175,13 +177,13 @@ mod test_parser {
     use super::super::nat;
 
     fn parse_token_vec(vec: Vec<Token>) -> Result<ParseBlock> {
-        ParseBlock::from(vec.into_iter().map(|t| Ok(t)))
+        ParseBlock::try_from_iter(vec.into_iter().map(|t| Ok(t)))
     }
 
     #[test]
     fn test_empty() {
         use std::iter::empty;
-        assert_eq!(ParseBlock::from(empty()).unwrap(), ParseBlock(vec![]));
+        assert_eq!(ParseBlock::try_from_iter(empty()).unwrap(), ParseBlock(vec![]));
     }
 
     #[test]

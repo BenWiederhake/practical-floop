@@ -126,78 +126,78 @@ mod test_resolver {
 
     #[test]
     fn test_empty() {
-        let input = ParseBlock::from_statements(&vec![]);
+        let input = ParseBlock::from(&[][..]);
         let expected = PloopBlock(Rc::new(vec![]));
-        let actual = PloopBlock::from_parsed(input);
+        let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn test_idents_literal() {
-        let input = ParseBlock::from_statements(&vec![
+        let input = ParseBlock::from(&[
             ParseStatement::AddToInto(nat(42), ParseId::FromNumber(1337), ParseId::FromNumber(23)),
-        ]);
-        let expected = PloopBlock::from_statements(&vec![
+        ][..]);
+        let expected = PloopBlock::from(&[
             PloopStatement::AddToInto(nat(42), VarId(1337), VarId(23)),
-        ]);
-        let actual = PloopBlock::from_parsed(input);
+        ][..]);
+        let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn test_idents_named() {
-        let input = ParseBlock::from_statements(&vec![
+        let input = ParseBlock::from(&[
             ParseStatement::AddToInto(nat(42), ParseId::FromString("A".into()), ParseId::FromString("B".into())),
             ParseStatement::AddToInto(nat(47), ParseId::FromString("C".into()), ParseId::FromString("A".into())),
-        ]);
-        let expected = PloopBlock::from_statements(&vec![
+        ][..]);
+        let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
             PloopStatement::AddToInto(nat(42), VarId(1), VarId(2)),
             PloopStatement::AddToInto(nat(47), VarId(3), VarId(1)),
-        ]);
-        let actual = PloopBlock::from_parsed(input);
+        ][..]);
+        let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn test_noninterference() {
-        let input = ParseBlock::from_statements(&vec![
+        let input = ParseBlock::from(&[
             ParseStatement::AddToInto(nat(42), ParseId::FromNumber(2), ParseId::FromString("A".into())),
             ParseStatement::AddToInto(nat(47), ParseId::FromString("B".into()), ParseId::FromNumber(3)),
-        ]);
-        let expected = PloopBlock::from_statements(&vec![
+        ][..]);
+        let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
             PloopStatement::AddToInto(nat(42), VarId(2), VarId(1)),
             PloopStatement::AddToInto(nat(47), VarId(4), VarId(3)),
-        ]);
-        let actual = PloopBlock::from_parsed(input);
+        ][..]);
+        let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn test_recursion() {
-        let input = ParseBlock::from_statements(&vec![
-            ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock::from_statements(&vec![
+        let input = ParseBlock::from(&[
+            ParseStatement::LoopDo(ParseId::FromNumber(2), ParseBlock::from(&[
                 ParseStatement::AddToInto(nat(5), ParseId::FromString("A".into()), ParseId::FromString("C".into())),
                 ParseStatement::AddToInto(nat(9), ParseId::FromString("B".into()), ParseId::FromString("A".into())),
-            ])),
-            ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock::from_statements(&vec![
+            ][..])),
+            ParseStatement::WhileDo(ParseId::FromString("x".into()), ParseBlock::from(&[
                 ParseStatement::AddToInto(nat(8), ParseId::FromString("A".into()), ParseId::FromNumber(1)),
                 ParseStatement::AddToInto(nat(4), ParseId::FromString("E".into()), ParseId::FromString("x".into())),
-            ])),
-        ]);
-        let expected = PloopBlock::from_statements(&vec![
+            ][..])),
+        ][..]);
+        let expected = PloopBlock::from(&[
             /* Note: `0` is reserved. */
-            PloopStatement::LoopDo(VarId(2), PloopBlock::from_statements(&vec![
+            PloopStatement::LoopDo(VarId(2), PloopBlock::from(&[
                 PloopStatement::AddToInto(nat(5), VarId(3), VarId(4)),
                 PloopStatement::AddToInto(nat(9), VarId(5), VarId(3)),
-            ])),
-            PloopStatement::WhileDo(VarId(6), PloopBlock::from_statements(&vec![
+            ][..])),
+            PloopStatement::WhileDo(VarId(6), PloopBlock::from(&[
                 PloopStatement::AddToInto(nat(8), VarId(3), VarId(1)),
                 PloopStatement::AddToInto(nat(4), VarId(7), VarId(6)),
-            ])),
-        ]);
-        let actual = PloopBlock::from_parsed(input);
+            ][..])),
+        ][..]);
+        let actual = PloopBlock::from(&input);
         assert_eq!(expected, actual);
     }
 }
