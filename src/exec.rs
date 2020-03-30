@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap};
 use std::convert::{TryFrom};
+use std::iter::{IntoIterator};
 use std::io::{Error, Result};
 use std::ops::{Deref, Index, IndexMut};
 use std::rc::{Rc};
@@ -114,7 +115,7 @@ impl PloopStatement {
 }
 
 // TODO: Consider a splay tree, as accesses are going to be repetitive.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Environment(BTreeMap<VarIdent, Natural>);
 
 impl Environment {
@@ -122,6 +123,21 @@ impl Environment {
         let mut map = BTreeMap::new();
         map.insert(VarIdent(0), input);
         Environment(map)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&VarIdent, &Natural)> {
+        self.0.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a Environment {
+    type Item = (&'a VarIdent, &'a Natural);
+
+    // Ugh.
+    type IntoIter = <&'a BTreeMap<VarIdent, Natural> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 
@@ -182,9 +198,7 @@ impl Configuration {
     pub fn run(&mut self) {
         while !self.is_completed() {
             self.step();
-            println!("Configuration afterwards: {:?}", self);
         }
-        println!("Output is: {:?}", self.state[&VarIdent(0)]);
     }
 }
 
@@ -193,5 +207,275 @@ impl Deref for Configuration {
 
     fn deref(&self) -> &Environment {
         &self.state
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::super::nat;
+
+    #[derive(Debug)]
+    enum Halts {
+        OnOrBefore(u32),
+        NotEvenAfter(u32),
+    }
+
+    impl Halts {
+        fn satisfies(&self, requirement: &Halts) -> bool {
+            use Halts::*;
+            match (self, requirement) {
+                (NotEvenAfter(act), NotEvenAfter(exp)) => act >= exp,
+                (OnOrBefore(act), NotEvenAfter(exp)) => act > exp,
+                (NotEvenAfter(act), OnOrBefore(exp)) => {
+                    // Image we require `OnOrBefore(10)`, and we only know
+                    // `NotEvenAfter(5)`. Then we don't have enough information,
+                    // because for some reason execution was halted too early.
+                    assert!(act >= exp);
+                    false
+                },
+                (OnOrBefore(act), OnOrBefore(exp)) => act <= exp,
+            }
+        }
+    }
+
+    fn observe(code: &str, input: Environment, max_steps: u32) -> (Halts, Configuration) {
+        let program = PloopBlock::try_from(code).expect("bad code");
+        let mut conf = Configuration::from_state(input, &program);
+        println!("Initial configuration: {:?}", conf);
+
+        let mut actual_steps = 0;
+        for _ in 0..max_steps {
+            if !conf.is_completed() {
+                actual_steps += 1;
+                conf.step();
+                println!("Configuration afterwards: {:?}", conf);
+            } else {
+                break;
+            }
+        }
+        let halts = if conf.is_completed() {
+            println!("Done (halted)");
+            Halts::OnOrBefore(actual_steps)
+        } else {
+            println!("Done (stopped)");
+            Halts::NotEvenAfter(actual_steps)
+        };
+
+        (halts, conf)
+    }
+
+    fn run_test(code: &str, input: Environment, exp_halts: Halts, exp_env: Vec<(u32, u64)>) {
+        let max_steps = match exp_halts {
+            Halts::NotEvenAfter(n) => n + 5,
+            // Make off-by-one-errors more obvious:
+            Halts::OnOrBefore(n) => n + 5,
+        };
+
+        let (act_halts, conf) = observe(code, input, max_steps);
+        assert!(act_halts.satisfies(&exp_halts));
+        let act_env = conf.deref();
+
+        let mut mismatches = Vec::new();
+        for (key, exp_value) in exp_env.iter() {
+            let key = VarIdent(*key);
+            let exp_value = nat(*exp_value);
+            let act_value = &act_env[&key];
+            if &exp_value != act_value {
+                mismatches.push((key, exp_value, act_value));
+            }
+        }
+        assert_eq!(mismatches, vec![]);
+    }
+
+    #[test]
+    fn test_empty() {
+        run_test("
+            ",
+            Environment::new(nat(1337)),
+            Halts::OnOrBefore(0),
+            vec![(0, 1337)],
+        );
+    }
+
+    #[test]
+    fn test_assignments() {
+        run_test("
+                add 0x1 to v0 into v0
+                add 0x2 to v1 into v1
+                add 0x4 to v2 into v2
+                add 0x40 to v0 into v10
+                add 0xF0 to v1 into v11
+                add 0xFC to v2 into v12
+                add 0x100 to v12 into v22
+                add 0x100 to v22 into v22
+                add 0x100 to v22 into v22
+            ",
+            Environment::new(nat(0x10)),
+            Halts::OnOrBefore(9),
+            vec![(0, 0x11),
+                 (1, 0x2),
+                 (2, 0x4),
+                 (10, 0x51),
+                 (11, 0xF2),
+                 (12, 0x100),
+                 (22, 0x400),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_simple() {
+        let code = "
+            subtract 0x5 from v0 into v1
+            add 0x5 to v1 into v1
+            add 0x0 to v2 into v0
+            loop v1 do
+                add 0x2 to v0 into v0
+            end
+            # This implements:
+            # x1 = min(5, x0)
+            # x0 = 2 * x1
+        ";
+
+        run_test(
+            code,
+            Environment::new(nat(2)),
+            Halts::OnOrBefore(15),
+            vec![(0, 10), (1, 5), (2, 0)],
+        );
+
+        run_test(
+            code,
+            Environment::new(nat(7)),
+            Halts::OnOrBefore(19),
+            vec![(0, 14), (1, 7), (2, 0)],
+        );
+    }
+
+    #[test]
+    fn test_empty_dotimes() {
+        run_test("
+                do 0x0 times
+                end
+            ",
+            Environment::new(nat(42)),
+            Halts::OnOrBefore(1),
+            vec![(0, 42), (1337, 0)],
+        );
+    }
+
+    #[test]
+    fn test_hanging_while() {
+        run_test("
+                while v0 do
+                    add 0x1 to v0 into v1
+                end
+            ",
+            Environment::new(nat(1)),
+            Halts::NotEvenAfter(999),
+            vec![(0, 1)],
+        );
+    }
+
+    #[test]
+    fn test_stopping_while() {
+        run_test("
+                while v0 do
+                    subtract 0x1 from v0 into v0
+                end
+            ",
+            Environment::new(nat(5)),
+            Halts::OnOrBefore(11),
+            vec![(0, 0)],
+        );
+    }
+
+    #[test]
+    fn test_loopy_3() {
+        run_test("
+                loop v0 do # v0 → v0 * (2 ** v0)
+                    loop v0 do # v0 → 2*v0
+                        add 0x1 to v0 into v0
+                    end
+                end
+            ",
+            Environment::new(nat(3)),
+            Halts::OnOrBefore(24 * 3),
+            vec![(0, 24)],
+        );
+    }
+
+    #[test]
+    fn test_loopy_4() {
+        run_test("
+                loop v0 do # v0 → v0 * (2 ** v0)
+                    loop v0 do # v0 → 2*v0
+                        add 0x1 to v0 into v0
+                    end
+                end
+            ",
+            Environment::new(nat(4)),
+            Halts::OnOrBefore(64 * 3),
+            vec![(0, 64)],
+        );
+    }
+
+    #[test]
+    fn test_loopy_5() {
+        run_test("
+                loop v0 do # v0 → v0 * (2 ** v0)
+                    loop v0 do # v0 → 2*v0
+                        add 0x1 to v0 into v0
+                    end
+                end
+            ",
+            Environment::new(nat(5)),
+            Halts::OnOrBefore(160 * 3),
+            vec![(0, 160)],
+        );
+    }
+
+    #[test]
+    fn test_looopy_2() {
+        run_test("
+                loop v0 do # v0 → ???
+                # 0
+                # 1 → 2
+                # 2 → 8 → 2048
+                # 3 → 24 → 402653184 → Oh boy!
+                    loop v0 do # v0 → v0 * (2 ** v0)
+                        loop v0 do # v0 → 2*v0
+                            add 0x1 to v0 into v0
+                        end
+                    end
+                end
+            ",
+            Environment::new(nat(2)),
+            Halts::OnOrBefore(2048 * 3),
+            vec![(0, 2048)],
+        );
+    }
+
+    #[test]
+    fn test_looopy_3() {
+        run_test("
+                loop v0 do # v0 → ???
+                # 0
+                # 1 → 2
+                # 2 → 8 → 2048
+                # 3 → 24 → 402653184 → Oh boy!
+                    loop v0 do # v0 → v0 * (2 ** v0)
+                        loop v0 do # v0 → 2*v0
+                            add 0x1 to v0 into v0
+                        end
+                    end
+                end
+            ",
+            Environment::new(nat(3)),
+            Halts::NotEvenAfter(10_000),
+            // We can't know for sure where exactly the interruption will happen
+            vec![],
+        );
     }
 }

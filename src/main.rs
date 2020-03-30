@@ -36,5 +36,6 @@ fn main() {
     let mut conf = Configuration::from_input(nat(7), &sample_prog);
     println!("Initial configuration: {:?}", conf);
     conf.run();
+    println!("Output is: {:?}", conf[&VarIdent(0)]);
     println!("Done");
 }
