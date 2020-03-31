@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::iter::{Peekable};
 
-use super::{Natural, ParseIdent, Token};
+use super::{Natural, Token, IdentToken};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseBlock(Vec<ParseStatement>);
@@ -18,10 +18,12 @@ impl ParseBlock {
     pub fn statements(&self) -> &[ParseStatement] {
         &self.0
     }
-}
 
-impl From<&[ParseStatement]> for ParseBlock {
-    fn from(statements: &[ParseStatement]) -> ParseBlock {
+    // Collisions between `DynamicIdent`s may or may not be intentional,
+    // so prevent the user from shooting their foot.
+    // However, it's needed for `resolve`s tests.
+    #[cfg(test)]
+    pub fn from(statements: &[ParseStatement]) -> ParseBlock {
         ParseBlock(Vec::from(statements))
     }
 }
@@ -38,6 +40,20 @@ pub enum ParseStatement {
     // IfElse
     // ForIn
     // SplitInto
+}
+
+// TODO: Not all derives are needed
+#[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
+pub enum DynamicIdent {
+    Named(String),
+    // TODO: Introduce the other temporaries
+}
+
+// TODO: Not all derives are needed
+#[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
+pub enum ParseIdent {
+    Static(u32),
+    Dynamic(DynamicIdent),
 }
 
 struct Parser<I> {
@@ -92,7 +108,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
         match self.next()? {
             None => Err(Error::new(ErrorKind::UnexpectedEof,
                 "Found EOF while expecting an ident token.")),
-            Some(Token::Ident(id)) => Ok(id),
+            Some(Token::Ident(IdentToken::FromNumber(id))) =>
+                Ok(ParseIdent::Static(id)),
+            Some(Token::Ident(IdentToken::FromString(id))) =>
+                Ok(ParseIdent::Dynamic(DynamicIdent::Named(id))),
             Some(actual) => Err(Error::new(ErrorKind::InvalidData,
                 format!("Expected ident token, found '{:?}' instead.", actual))),
         }
@@ -192,11 +211,11 @@ mod test_parser {
         use ParseStatement::*;
         let parse_result = parse_token_vec(vec![
             Add, Number(nat(100)),
-            To, Ident(ParseIdent::FromNumber(1337)),
-            Into, Ident(ParseIdent::FromString("foo".to_string())),
+            To, Ident(IdentToken::FromNumber(1337)),
+            Into, Ident(IdentToken::FromString("foo".to_string())),
         ]);
         assert_eq!(parse_result.unwrap(), ParseBlock(vec![
-            AddToInto(nat(100), ParseIdent::FromNumber(1337), ParseIdent::FromString("foo".to_string()))
+            AddToInto(nat(100), ParseIdent::Static(1337), ParseIdent::Dynamic(DynamicIdent::Named("foo".to_string())))
         ]));
     }
 

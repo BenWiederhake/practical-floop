@@ -15,8 +15,8 @@ use num_bigint::{BigUint};
 
 pub type Natural = BigUint;
 
-pub use token::{nat, ParseIdent, Token, Tokenizer};
-pub use parse::{ParseBlock, ParseStatement};
+pub use token::{nat, IdentToken, Token, Tokenizer};
+pub use parse::{ParseBlock, ParseStatement, ParseIdent, DynamicIdent};
 pub use resolve::{Resolver};
 pub use exec::{VarIdent, PloopBlock, PloopStatement, Environment, Configuration};
 
