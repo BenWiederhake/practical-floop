@@ -74,7 +74,6 @@ impl PloopStatement {
         use PloopStatement::*;
         match self {
             AddToInto(amount, src, dst) => {
-                println!("AddToInto: {:?} {:?} {:?}", amount, src, dst);
                 if src == dst {
                     conf.state[&dst] += amount;
                 } else {
@@ -82,7 +81,6 @@ impl PloopStatement {
                 }
             }
             SubtractFromInto(amount, src, dst) => {
-                println!("SubtractFromInto: {:?} {:?} {:?}", amount, src, dst);
                 if conf.state[&src] <= amount {
                     conf.state[&dst].set_zero();
                 } else if src == dst {
@@ -92,11 +90,9 @@ impl PloopStatement {
                 }
             }
             LoopDo(var, block) => {
-                println!("LoopDo: {:?} {:?}", var, block);
                 conf.push(DoTimes(conf.state[&var].clone(), block));
             }
             DoTimes(mut amount, block) => {
-                println!("DoTimes: {:?} {:?}", amount, block);
                 if !amount.is_zero() {
                     amount = amount.checked_sub(&nat(1)).unwrap();
                     conf.push(DoTimes(amount, block.clone()));
@@ -104,7 +100,6 @@ impl PloopStatement {
                 }
             }
             WhileDo(var, block) => {
-                println!("WhileDo: {:?} {:?}", var, block);
                 if !conf.state[&var].is_zero() {
                     conf.push(WhileDo(var, block.clone()));
                     conf.push_all(&block);
@@ -245,11 +240,11 @@ mod test {
         println!("Initial configuration: {:?}", conf);
 
         let mut actual_steps = 0;
-        for _ in 0..max_steps {
+        for i in 0..max_steps {
             if !conf.is_completed() {
                 actual_steps += 1;
                 conf.step();
-                println!("Configuration afterwards: {:?}", conf);
+                println!("Configuration after step #{}: {:?}", i, conf);
             } else {
                 break;
             }
@@ -276,16 +271,32 @@ mod test {
         assert!(act_halts.satisfies(&exp_halts));
         let act_env = conf.deref();
 
-        let mut mismatches = Vec::new();
+        let mut mismatch = false;
         for (key, exp_value) in exp_env.iter() {
             let key = VarIdent(*key);
             let exp_value = nat(*exp_value);
             let act_value = &act_env[&key];
             if &exp_value != act_value {
-                mismatches.push((key, exp_value, act_value));
+                println!(
+                    "MISMATCH for {:?}: expected {}, but was {}!",
+                    key, exp_value, act_value
+                );
+                mismatch = true;
             }
         }
-        assert_eq!(mismatches, vec![]);
+        assert!(!mismatch);
+    }
+
+    fn env_from(pairs: Vec<(u32, u64)>) -> Environment {
+        assert_eq!(0, pairs[0].0, "Must start with (0, _): {:?}", pairs);
+        let mut env = Environment::new(nat(pairs[0].1));
+        for (key, value) in pairs.iter() {
+            let ekey = VarIdent(*key);
+            let evalue = nat(*value);
+            env[&ekey] = evalue;
+        }
+
+        env
     }
 
     #[test]
@@ -487,6 +498,222 @@ mod test {
             Halts::NotEvenAfter(10_000),
             // We can't know for sure where exactly the interruption will happen
             vec![],
+        );
+    }
+
+    #[test]
+    fn test_manual_add() {
+        let code = "
+            # input is v0 and v1, output is v2
+            add 0x0 to v0 into v2
+            loop v1 do
+                add 0x1 to v2 into v2
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0)]),
+            Halts::OnOrBefore(4),
+            vec![(0, 0), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 10), (1, 10), (2, 20)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 42), (1, 13)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 42), (1, 13), (2, 55)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 48)]),
+            Halts::OnOrBefore(100),
+            vec![(0, 5), (1, 48), (2, 53)],
+        );
+    }
+
+    #[test]
+    fn test_manual_sub() {
+        let code = "
+            # input is v0 and v1, output is v2
+            add 0x0 to v0 into v2
+            loop v1 do
+                subtract 0x1 from v2 into v2
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(4),
+            vec![(0, 0), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 10), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 42), (1, 13), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 42), (1, 13), (2, 29)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 48), (2, 123456)]),
+            Halts::OnOrBefore(100),
+            vec![(0, 5), (1, 48), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 3), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 3), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 3), (1, 0), (2, 2020)]),
+            Halts::OnOrBefore(5),
+            vec![(0, 3), (1, 0), (2, 3)],
+        );
+    }
+
+    #[test]
+    fn test_manual_div() {
+        let code = "
+            # input is v0 and v1, output is v2
+            # Note: We don't care about v1 == 1
+            # ---
+            # We would like a 'set to zero' operation, but there is none.
+            add 0x0 to v1 into _zero
+            loop _zero do
+                subtract 0x1 from _zero into _zero
+            end
+            add 0x0 to _zero into v2
+            add 0x1 to _zero into _unsure
+            add 0x1 to v0 into _overremainder
+            # Invariants:
+            # _zero == 0
+            # (_unsure == 0) implies v2 * v1 + _overremainder == v0 + 1
+            # (_unsure == 1) implies v2 == floor(v0/v1)
+            loop v0 do
+                loop _unsure do
+                    # Compute next _overremainder
+                    loop v1 do
+                        subtract 0x1 from _overremainder into _overremainder
+                    end
+                    # If _overremainder is still larger than 0,
+                    # then the current remainder was >= v1 (_overremainder > v1),
+                    # so v2 wasn't the answer.
+                    add 0x0 to _zero into _unsure
+                    loop _overremainder do
+                        add 0x1 to _zero into _unsure
+                    end
+                    # And if v2 wasn't the answer, try v2+1 next:
+                    loop _unsure do
+                        add 0x1 to v2 into v2
+                    end
+                end
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 1)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 1), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 2)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 2), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 10), (2, 99)]),
+            Halts::OnOrBefore(99),
+            vec![(0, 1), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 9), (1, 10)]),
+            Halts::OnOrBefore(99),
+            vec![(0, 9), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 10), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 11), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 11), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 19), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 19), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 20), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 20), (1, 10), (2, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 21), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 21), (1, 10), (2, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 255), (1, 256)]),
+            Halts::OnOrBefore(196608),
+            vec![(0, 255), (1, 256), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 256), (1, 256)]),
+            Halts::OnOrBefore(196608),
+            vec![(0, 256), (1, 256), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 257), (1, 256)]),
+            Halts::OnOrBefore(196608),
+            vec![(0, 257), (1, 256), (2, 1)],
         );
     }
 }
