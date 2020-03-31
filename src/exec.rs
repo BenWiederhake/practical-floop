@@ -1,16 +1,16 @@
-use std::collections::{BTreeMap};
-use std::convert::{TryFrom};
-use std::iter::{IntoIterator};
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use std::io::{Error, Result};
+use std::iter::IntoIterator;
 use std::ops::{Deref, Index, IndexMut};
-use std::rc::{Rc};
+use std::rc::Rc;
 
-use num_traits::identities::{Zero};
-use num_traits::ops::checked::{CheckedSub};
+use num_traits::identities::Zero;
+use num_traits::ops::checked::CheckedSub;
 
-use super::{Natural, nat, Tokenizer};
-use super::{ParseBlock};
-use super::{Resolver};
+use super::ParseBlock;
+use super::Resolver;
+use super::{nat, Natural, Tokenizer};
 
 // TODO: Can this be done without lazy_static?
 lazy_static! {
@@ -80,7 +80,7 @@ impl PloopStatement {
                 } else {
                     conf.state[&dst] = conf.state[&src].clone() + amount;
                 }
-            },
+            }
             SubtractFromInto(amount, src, dst) => {
                 println!("SubtractFromInto: {:?} {:?} {:?}", amount, src, dst);
                 if conf.state[&src] <= amount {
@@ -90,11 +90,11 @@ impl PloopStatement {
                 } else {
                     conf.state[&dst] = conf.state[&src].clone() - amount;
                 }
-            },
+            }
             LoopDo(var, block) => {
                 println!("LoopDo: {:?} {:?}", var, block);
                 conf.push(DoTimes(conf.state[&var].clone(), block));
-            },
+            }
             DoTimes(mut amount, block) => {
                 println!("DoTimes: {:?} {:?}", amount, block);
                 if !amount.is_zero() {
@@ -109,7 +109,7 @@ impl PloopStatement {
                     conf.push(WhileDo(var, block.clone()));
                     conf.push_all(&block);
                 }
-            },
+            }
         }
     }
 }
@@ -180,7 +180,7 @@ impl Configuration {
     }
 
     fn push_all(&mut self, block: &PloopBlock) {
-        let mut statements : Vec<PloopStatement> = (*block.0).clone();
+        let mut statements: Vec<PloopStatement> = (*block.0).clone();
         statements.reverse();
         self.stack.extend_from_slice(&statements);
     }
@@ -212,8 +212,8 @@ impl Deref for Configuration {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::super::nat;
+    use super::*;
 
     #[derive(Debug)]
     enum Halts {
@@ -233,7 +233,7 @@ mod test {
                     // because for some reason execution was halted too early.
                     assert!(act >= exp);
                     false
-                },
+                }
                 (OnOrBefore(act), OnOrBefore(exp)) => act <= exp,
             }
         }
@@ -290,7 +290,8 @@ mod test {
 
     #[test]
     fn test_empty() {
-        run_test("
+        run_test(
+            "
             ",
             Environment::new(nat(1337)),
             Halts::OnOrBefore(0),
@@ -300,7 +301,8 @@ mod test {
 
     #[test]
     fn test_assignments() {
-        run_test("
+        run_test(
+            "
                 add 0x1 to v0 into v0
                 add 0x2 to v1 into v1
                 add 0x4 to v2 into v2
@@ -313,13 +315,14 @@ mod test {
             ",
             Environment::new(nat(0x10)),
             Halts::OnOrBefore(9),
-            vec![(0, 0x11),
-                 (1, 0x2),
-                 (2, 0x4),
-                 (10, 0x51),
-                 (11, 0xF2),
-                 (12, 0x100),
-                 (22, 0x400),
+            vec![
+                (0, 0x11),
+                (1, 0x2),
+                (2, 0x4),
+                (10, 0x51),
+                (11, 0xF2),
+                (12, 0x100),
+                (22, 0x400),
             ],
         );
     }
@@ -355,7 +358,8 @@ mod test {
 
     #[test]
     fn test_empty_dotimes() {
-        run_test("
+        run_test(
+            "
                 do 0x0 times
                 end
             ",
@@ -367,7 +371,8 @@ mod test {
 
     #[test]
     fn test_hanging_while() {
-        run_test("
+        run_test(
+            "
                 while v0 do
                     add 0x1 to v0 into v1
                 end
@@ -380,7 +385,8 @@ mod test {
 
     #[test]
     fn test_stopping_while() {
-        run_test("
+        run_test(
+            "
                 while v0 do
                     subtract 0x1 from v0 into v0
                 end
@@ -393,7 +399,8 @@ mod test {
 
     #[test]
     fn test_loopy_3() {
-        run_test("
+        run_test(
+            "
                 loop v0 do # v0 → v0 * (2 ** v0)
                     loop v0 do # v0 → 2*v0
                         add 0x1 to v0 into v0
@@ -408,7 +415,8 @@ mod test {
 
     #[test]
     fn test_loopy_4() {
-        run_test("
+        run_test(
+            "
                 loop v0 do # v0 → v0 * (2 ** v0)
                     loop v0 do # v0 → 2*v0
                         add 0x1 to v0 into v0
@@ -423,7 +431,8 @@ mod test {
 
     #[test]
     fn test_loopy_5() {
-        run_test("
+        run_test(
+            "
                 loop v0 do # v0 → v0 * (2 ** v0)
                     loop v0 do # v0 → 2*v0
                         add 0x1 to v0 into v0
@@ -438,7 +447,8 @@ mod test {
 
     #[test]
     fn test_looopy_2() {
-        run_test("
+        run_test(
+            "
                 loop v0 do # v0 → ???
                 # 0
                 # 1 → 2
@@ -459,7 +469,8 @@ mod test {
 
     #[test]
     fn test_looopy_3() {
-        run_test("
+        run_test(
+            "
                 loop v0 do # v0 → ???
                 # 0
                 # 1 → 2

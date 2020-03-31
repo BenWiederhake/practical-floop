@@ -1,39 +1,45 @@
 use std::io::{Error, ErrorKind, Result};
 use std::num::{IntErrorKind, ParseIntError};
 
-use num_traits::{Num};
+use num_traits::Num;
 
 // Who you gonna call?!
-use super::{Natural};
+use super::Natural;
 
 fn convert_num_error(e: ParseIntError) -> Error {
     use IntErrorKind::*;
-    let msg : String = match e.kind() {
+    let msg: String = match e.kind() {
         Empty => "empty specifier".into(),
         InvalidDigit => format!("not a digit ({})", e),
         Overflow => format!("cannot handle large naturals yet (BUG) ({})", e),
         Underflow => format!("must be non-negative ({})", e),
         Zero => unreachable!(),
-        _ => format!("unknown (BUG) ({})", e),  // unfixable
+        _ => format!("unknown (BUG) ({})", e), // unfixable
     };
     Error::new(ErrorKind::InvalidData, msg)
 }
 
 fn parse_natural(digits: &str) -> Result<Natural> {
     let radix = match digits.chars().next() {
-        None => return Err(Error::new(ErrorKind::InvalidData,
-            "Cannot parse natual '0'.  Did you mean '0x0'?")),
+        None => {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Cannot parse natual '0'.  Did you mean '0x0'?",
+            ))
+        }
         Some('b') => 2,
         Some('o') => 8,
         Some('d') => 10,
         Some('x') => 16,
-        Some(c) => return Err(Error::new(ErrorKind::InvalidData,
-            format!("Unknown base '{}'", c))),
+        Some(c) => {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Unknown base '{}'", c),
+            ))
+        }
     };
 
-    Natural::from_str_radix(&digits[1..], radix).map_err(
-        |e| Error::new(ErrorKind::InvalidData, e)
-    )
+    Natural::from_str_radix(&digits[1..], radix).map_err(|e| Error::new(ErrorKind::InvalidData, e))
 }
 
 pub fn nat(n: u64) -> Natural {
@@ -43,7 +49,7 @@ pub fn nat(n: u64) -> Natural {
 #[cfg(test)]
 mod test_natural {
     use super::*;
-    use num_traits::ops::checked::{CheckedSub};
+    use num_traits::ops::checked::CheckedSub;
 
     #[test]
     fn test_add() {
@@ -74,7 +80,10 @@ mod test_natural {
         assert_eq!(nat(0x10), parse_natural("x10").unwrap());
         assert_eq!(nat(1337), parse_natural("x539").unwrap());
         assert_eq!(nat(0xFFFFFFFF), parse_natural("xFFFFFFFF").unwrap());
-        assert_eq!(nat(0xFFFFFFFFFFFFFFFFu64), parse_natural("xFFFFFFFFFFFFFFFF").unwrap());
+        assert_eq!(
+            nat(0xFFFFFFFFFFFFFFFFu64),
+            parse_natural("xFFFFFFFFFFFFFFFF").unwrap()
+        );
         assert!("xG".parse::<Natural>().is_err());
     }
 
@@ -148,7 +157,11 @@ pub struct Tokenizer<I> {
 
 impl<I> Tokenizer<I> {
     pub fn new(source: I) -> Tokenizer<I> {
-        Tokenizer { source, errored: false, peeked_reverse: Vec::with_capacity(2) }
+        Tokenizer {
+            source,
+            errored: false,
+            peeked_reverse: Vec::with_capacity(2),
+        }
     }
 }
 
@@ -174,9 +187,12 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
     }
 
     fn consume_one(&mut self) -> Result<char> {
-        self.try_consume_one().unwrap_or_else(
-            || Err(Error::new(ErrorKind::UnexpectedEof, "Tried to consume non-existent char"))
-        )
+        self.try_consume_one().unwrap_or_else(|| {
+            Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "Tried to consume non-existent char",
+            ))
+        })
     }
 
     fn push(&mut self, c: char) {
@@ -199,7 +215,7 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
         }
         // TODO: Is `shrink_to_fit` here harmful or beneficial?
         builder.shrink_to_fit();
-        return Ok(builder)
+        return Ok(builder);
     }
 
     fn consume_whitespace(&mut self) -> Result<()> {
@@ -212,7 +228,7 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
                 Some(Ok(c)) => {
                     self.push(c);
                     break;
-                },
+                }
             }
             self.consume_while(|c| c != '\n')?;
             let _newline = self.consume_one()?;
@@ -225,38 +241,42 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
         use Token::*;
         let word = self.consume_while(|c| !c.is_whitespace())?;
         match word.as_str() {
-            "add"      => return Ok(Add     ),
-            "to"       => return Ok(To      ),
-            "into"     => return Ok(Into    ),
+            "add" => return Ok(Add),
+            "to" => return Ok(To),
+            "into" => return Ok(Into),
             "subtract" => return Ok(Subtract),
-            "from"     => return Ok(From    ),
-            "loop"     => return Ok(Loop    ),
-            "do"       => return Ok(Do      ),
-            "end"      => return Ok(End     ),
-            "times"    => return Ok(Times   ),
-            "while"    => return Ok(While   ),
+            "from" => return Ok(From),
+            "loop" => return Ok(Loop),
+            "do" => return Ok(Do),
+            "end" => return Ok(End),
+            "times" => return Ok(Times),
+            "while" => return Ok(While),
             // "calc"     => return Ok(Calc    ),
             // "plus"     => return Ok(Plus    ),
             // "satminus" => return Ok(SatMinus),
             // "mult"     => return Ok(Mult    ),
             // "div"      => return Ok(Div     ),
             // "mod"      => return Ok(Mod     ),
-            _ => {},
+            _ => {}
         }
         debug_assert!(!word.is_empty());
 
         match word.chars().next().unwrap() {
-            'v' => Ok(Ident(IdentToken::FromNumber(word[1..].parse().map_err(convert_num_error)?))),
+            'v' => Ok(Ident(IdentToken::FromNumber(
+                word[1..].parse().map_err(convert_num_error)?,
+            ))),
             '_' => Ok(Ident(IdentToken::FromString(word[1..].into()))),
             '0' => Ok(Number(parse_natural(&word[1..])?)),
-            _ => Err(Error::new(ErrorKind::InvalidData,
-                format!("Unknown token '{}'", word))),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Unknown token '{}'", word),
+            )),
         }
     }
 
     fn unfused_next(&mut self) -> Option<Result<Token>> {
         match self.consume_whitespace() {
-            Ok(()) => { /* Continue. */ },
+            Ok(()) => { /* Continue. */ }
             Err(e) => return Some(Err(e)),
         }
 
@@ -323,7 +343,8 @@ mod test_tokenizer {
     #[test]
     fn test_whitespace() {
         use Token::*;
-        let (tokens, maybe_error) = tokenize_string("  add   \n\t   \t\tsubtract\nend\tfrom # loop loop\tend\ntimes  ");
+        let (tokens, maybe_error) =
+            tokenize_string("  add   \n\t   \t\tsubtract\nend\tfrom # loop loop\tend\ntimes  ");
         assert_eq!(tokens, vec![Add, Subtract, End, From, Times]);
         assert!(maybe_error.is_none());
     }
@@ -331,7 +352,8 @@ mod test_tokenizer {
     #[test]
     fn test_multiwhitespace() {
         use Token::*;
-        let (tokens, maybe_error) = tokenize_string("add subtract\n# # into # into #\n\n# into\n#into#into\n#\n#\nend");
+        let (tokens, maybe_error) =
+            tokenize_string("add subtract\n# # into # into #\n\n# into\n#into#into\n#\n#\nend");
         assert_eq!(tokens, vec![Add, Subtract, End]);
         assert!(maybe_error.is_none());
     }
@@ -356,12 +378,18 @@ mod test_tokenizer {
     fn test_parsing() {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("do 0x64 from _thing end v1337 times");
-        assert_eq!(tokens, vec![
-            Do, Number(nat(100)),
-            From, Ident(IdentToken::FromString("thing".to_string())),
-            End, Ident(IdentToken::FromNumber(1337)),
-            Times
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Do,
+                Number(nat(100)),
+                From,
+                Ident(IdentToken::FromString("thing".to_string())),
+                End,
+                Ident(IdentToken::FromNumber(1337)),
+                Times
+            ]
+        );
         assert!(maybe_error.is_none());
     }
 
@@ -385,7 +413,10 @@ mod test_tokenizer {
     fn test_partial_variable_named() {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("add _ from");
-        assert_eq!(tokens, vec![Add, Ident(IdentToken::FromString("".to_string())), From]);
+        assert_eq!(
+            tokens,
+            vec![Add, Ident(IdentToken::FromString("".to_string())), From]
+        );
         assert!(maybe_error.is_none());
     }
 
