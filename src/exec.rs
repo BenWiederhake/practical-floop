@@ -716,4 +716,170 @@ mod test {
             vec![(0, 257), (1, 256), (2, 1)],
         );
     }
+
+    #[test]
+    fn test_manual_div256() {
+        let code = "
+            # input is v0, output is v1 (DIFFERENT!)
+            # ---
+            # We would like a 'set to zero' operation, but there is none.
+            subtract 0xFFFFFFFF from v0 into _zero
+            loop _zero do
+                subtract 0x1 from _zero into _zero
+            end
+            add 0x0 to _zero into v1
+            add 0x1 to _zero into _unsure
+            add 0x1 to v0 into _overremainder
+            # Invariants:
+            # _zero == 0
+            # (_unsure == 0) implies v1 * 256 + _overremainder == v0 + 1
+            # (_unsure == 1) implies v1 == floor(v0/256)
+            loop v0 do
+                loop _unsure do
+                    # Compute next _overremainder
+                    subtract 0x100 from _overremainder into _overremainder
+                    # If _overremainder is still larger than 0,
+                    # then the current remainder was >= 256 (_overremainder > 257),
+                    # so v1 wasn't the answer.
+                    add 0x0 to _zero into _unsure
+                    loop _overremainder do
+                        add 0x1 to _zero into _unsure
+                    end
+                    # And if v1 wasn't the answer, try v1+1 next:
+                    loop _unsure do
+                        add 0x1 to v1 into v1
+                    end
+                end
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 1337)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 1337)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1), (1, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 2), (1, 1337)]),
+            Halts::OnOrBefore(21),
+            vec![(0, 2), (1, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 254), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(1000),
+            vec![(0, 254), (1, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 255), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(1000),
+            vec![(0, 255), (1, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 256), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(1000),
+            vec![(0, 256), (1, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 257), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(1000),
+            vec![(0, 257), (1, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 511), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(3000),
+            vec![(0, 511), (1, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 512), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(3000),
+            vec![(0, 512), (1, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1023), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(13000),
+            vec![(0, 1023), (1, 3)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1024), (1, 42), (2, 422)]),
+            Halts::OnOrBefore(13000),
+            vec![(0, 1024), (1, 4)],
+        );
+    }
+
+    #[test]
+    #[ignore = "Do not capture the output! Also, it takes ages!"]
+    fn test_manual_div256_long() {
+        let code = "
+            # input is v0, output is v1 (DIFFERENT!)
+            # ---
+            # We would like a 'set to zero' operation, but there is none.
+            subtract 0xFFFFFFFF from v0 into _zero
+            loop _zero do
+                subtract 0x1 from _zero into _zero
+            end
+            add 0x0 to _zero into v1
+            add 0x1 to _zero into _unsure
+            add 0x1 to v0 into _overremainder
+            # Invariants:
+            # _zero == 0
+            # (_unsure == 0) implies v1 * 256 + _overremainder == v0 + 1
+            # (_unsure == 1) implies v1 == floor(v0/256)
+            loop v0 do
+                loop _unsure do
+                    # Compute next _overremainder
+                    subtract 0x100 from _overremainder into _overremainder
+                    # If _overremainder is still larger than 0,
+                    # then the current remainder was >= 256 (_overremainder > 257),
+                    # so v1 wasn't the answer.
+                    add 0x0 to _zero into _unsure
+                    loop _overremainder do
+                        add 0x1 to _zero into _unsure
+                    end
+                    # And if v1 wasn't the answer, try v1+1 next:
+                    loop _unsure do
+                        add 0x1 to v1 into v1
+                    end
+                end
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 2559)]),
+            Halts::OnOrBefore(77000), // Holy crap!
+            vec![(0, 2559), (1, 9)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 2560)]),
+            Halts::OnOrBefore(77000), // Holy crap!
+            vec![(0, 2560), (1, 10)],
+        );
+    }
 }
