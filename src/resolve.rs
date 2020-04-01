@@ -81,7 +81,6 @@ impl Resolver {
                     value.clone()
                 } else {
                     let value = self.reserve_any();
-                    // TODO: Get rid of the string clone?
                     self.dict.insert(var_dyn.clone(), value);
                     value
                 }

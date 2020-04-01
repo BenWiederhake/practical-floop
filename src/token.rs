@@ -95,8 +95,7 @@ mod test_natural {
     }
 }
 
-// TODO: Not all derives are needed
-#[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IdentToken {
     FromNumber(u32),
     FromString(String),

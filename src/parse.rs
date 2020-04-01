@@ -44,15 +44,13 @@ pub enum ParseStatement {
     // SplitInto
 }
 
-// TODO: Not all derives are needed
 #[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
 pub enum DynamicIdent {
     Named(String),
     // TODO: Introduce the other temporaries
 }
 
-// TODO: Not all derives are needed
-#[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ParseIdent {
     Static(u32),
     Dynamic(DynamicIdent),

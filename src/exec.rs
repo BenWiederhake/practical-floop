@@ -80,7 +80,6 @@ pub enum PloopStatement {
 
 impl PloopStatement {
     fn apply(self, conf: &mut Configuration) {
-        // TODO: Assertions would need a return value of sorts
         use PloopStatement::*;
         match self {
             AddToInto(amount, src, dst) => {
@@ -166,11 +165,11 @@ impl PloopStatement {
                     // The inner loop is a no-op. Executing a no-op `amount`
                     // many times is still a no-op so we can skip this.
                     true
-                    // I know this can be written differently.
-                    // Writing it this way stresses that there could be a `else if`,
-                    // and that doing nothing here is actually non-trivial.
+                // I know this can be written differently.
+                // Writing it this way stresses that there could be a `else if`,
+                // and that doing nothing here is actually non-trivial.
                 } else {
-                    // TODO: Maybe this can be improved?
+                    // TODO: Maybe this case can be improved?
                     false
                 }
             }
