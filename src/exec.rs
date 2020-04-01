@@ -61,7 +61,7 @@ impl TryFrom<&str> for PloopBlock {
     type Error = Error;
 
     fn try_from(string: &str) -> Result<PloopBlock> {
-        PloopBlock::try_from_iter(string.chars().map(|c| Ok(c)))
+        PloopBlock::try_from_iter(string.chars().map(Ok))
     }
 }
 

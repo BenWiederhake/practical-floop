@@ -60,8 +60,7 @@ impl Resolver {
 
     fn reserve_any(&mut self) -> VarIdent {
         let chosen = (self.first_unchecked..)
-            .filter(|x| !self.reserved.contains(&VarIdent(*x)))
-            .next()
+            .find(|x| !self.reserved.contains(&VarIdent(*x)))
             .unwrap();
         self.first_unchecked = chosen + 1;
         let is_new = self.reserved.insert(VarIdent(chosen));
@@ -78,7 +77,7 @@ impl Resolver {
             ParseIdent::Dynamic(var_dyn) => {
                 // TODO: Can `entry()` be used here somehow?
                 if let Some(value) = self.dict.get(var_dyn) {
-                    value.clone()
+                    *value
                 } else {
                     let value = self.reserve_any();
                     self.dict.insert(var_dyn.clone(), value);

@@ -86,7 +86,6 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
         }
     }
 
-    #[must_use]
     fn parse_expected(&mut self, expected: Token) -> Result<()> {
         match self.next()? {
             None => Err(Error::new(

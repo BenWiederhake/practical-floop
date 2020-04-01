@@ -214,7 +214,7 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
         }
         // TODO: Is `shrink_to_fit` here harmful or beneficial?
         builder.shrink_to_fit();
-        return Ok(builder);
+        Ok(builder)
     }
 
     fn consume_whitespace(&mut self) -> Result<()> {
