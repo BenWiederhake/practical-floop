@@ -4,10 +4,11 @@ use super::{
     DynamicIdent, ParseBlock, ParseIdent, ParseStatement, PloopBlock, PloopStatement, VarIdent,
 };
 
+#[derive(Default)]
 pub struct Resolver {
     reserved: BTreeSet<VarIdent>,
     dict: BTreeMap<DynamicIdent, VarIdent>,
-    first_unchecked: u32,
+    last_checked: u32,
 }
 
 impl Resolver {
@@ -17,16 +18,12 @@ impl Resolver {
          * considered input/output, and *really* should not be interfered with
          * by automatic assignment, even if it's not explicitly used for some
          * reason. */
-        Resolver {
-            reserved: BTreeSet::new(),
-            dict: BTreeMap::new(),
-            first_unchecked: 1,
-        }
+        Resolver::default()
     }
 
     fn reserve_if_static(&mut self, ident: &ParseIdent) {
-        if let &ParseIdent::Static(n) = ident {
-            self.reserved.insert(VarIdent(n));
+        if let ParseIdent::Static(n) = ident {
+            self.reserved.insert(VarIdent(*n));
         }
     }
 
@@ -59,10 +56,10 @@ impl Resolver {
     }
 
     fn reserve_any(&mut self) -> VarIdent {
-        let chosen = (self.first_unchecked..)
+        let chosen = ((self.last_checked + 1)..)
             .find(|x| !self.reserved.contains(&VarIdent(*x)))
             .unwrap();
-        self.first_unchecked = chosen + 1;
+        self.last_checked = chosen;
         let is_new = self.reserved.insert(VarIdent(chosen));
         assert!(is_new);
         VarIdent(chosen)
