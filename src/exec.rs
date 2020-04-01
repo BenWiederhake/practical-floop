@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::io::{Error, Result};
 use std::iter::IntoIterator;
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::{Deref, Index, IndexMut, SubAssign};
 use std::rc::Rc;
 
 use num_traits::identities::Zero;
@@ -30,6 +30,16 @@ impl PloopBlock {
         let token_iter = Tokenizer::new(iter);
         let parsed_block = ParseBlock::try_from_iter(token_iter)?;
         Ok(PloopBlock::from(&parsed_block))
+    }
+
+    fn try_loop_shortcut(&self, amount: &Natural, conf: &mut Configuration) -> bool {
+        if self.0.len() > 1 {
+            // Only handle single statements for now.
+            // TODO: Can we deal with multi-statement loops?  Is that desirable?
+            return false;
+        }
+        assert!(!amount.is_zero());
+        self.0[0].try_loop_shortcut(amount, conf)
     }
 }
 
@@ -93,18 +103,82 @@ impl PloopStatement {
                 conf.push(DoTimes(conf.state[&var].clone(), block));
             }
             DoTimes(mut amount, block) => {
-                if !amount.is_zero() {
+                if amount.is_zero() {
+                    // Base case.
+                    // Nothing to do.
+                } else if block.try_loop_shortcut(&amount, conf) {
+                    // A loop shortcut was found and applied.
+                    // Nothing to do.
+                } else {
                     amount = amount.checked_sub(&nat(1)).unwrap();
                     conf.push(DoTimes(amount, block.clone()));
                     conf.push_all(&block);
                 }
             }
             WhileDo(var, block) => {
+                // Cannot shortcut.
+                // Or rather, if we can shortcut, then it's an infinite loop,
+                // so shortcutting it would be pointless.
                 if !conf.state[&var].is_zero() {
                     conf.push(WhileDo(var, block.clone()));
                     conf.push_all(&block);
                 }
             }
+        }
+    }
+
+    // I really want to name this "try_loophole".
+    fn try_loop_shortcut(&self, outer_amount: &Natural, conf: &mut Configuration) -> bool {
+        use PloopStatement::*;
+        match self {
+            AddToInto(amount, src, dst) => {
+                if src == dst {
+                    conf.state[&dst] += outer_amount * amount;
+                } else {
+                    // `outer_amount` is irrelevant.
+                    // This can happen when the code is, for example,
+                    // determining whether something is non-zero.
+                    conf.state[&dst] = conf.state[&src].clone() + amount;
+                }
+                true
+            }
+            SubtractFromInto(amount, src, dst) => {
+                if src == dst {
+                    let actual_amount: Natural = amount * outer_amount;
+                    let dst_var = &mut conf.state[&dst];
+                    // TODO: Why doesn't this work without a cast?
+                    // if dst_var <= &actual_amount {
+                    if (dst_var as &Natural) <= &actual_amount {
+                        dst_var.set_zero();
+                    } else {
+                        //dst_var -= (&actual_amount as &Natural);
+                        dst_var.sub_assign(&actual_amount as &Natural);
+                    }
+                } else {
+                    // `outer_amount` is irrelevant.
+                    // Why write code like that? Whatever.
+                    conf.state[&dst] = conf.state[&src].clone() - amount;
+                }
+                true
+            }
+            LoopDo(var, _block) => {
+                if conf[var].is_zero() {
+                    // The inner loop is a no-op. Executing a no-op `amount`
+                    // many times is still a no-op so we can skip this.
+                    true
+                    // I know this can be written differently.
+                    // Writing it this way stresses that there could be a `else if`,
+                    // and that doing nothing here is actually non-trivial.
+                } else {
+                    // TODO: Maybe this can be improved?
+                    false
+                }
+            }
+            DoTimes(amount, block) => {
+                // Nice!
+                block.try_loop_shortcut(&(outer_amount * amount), conf)
+            }
+            WhileDo(_var, _block) => false, // Hard
         }
     }
 }
@@ -712,7 +786,7 @@ mod test {
         run_test(
             code,
             env_from(vec![(0, 257), (1, 256)]),
-            Halts::OnOrBefore(196608),
+            Halts::OnOrBefore(200),
             vec![(0, 257), (1, 256), (2, 1)],
         );
     }
@@ -777,63 +851,62 @@ mod test {
         run_test(
             code,
             env_from(vec![(0, 254), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(1000),
+            Halts::OnOrBefore(200),
             vec![(0, 254), (1, 0)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 255), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(1000),
+            Halts::OnOrBefore(200),
             vec![(0, 255), (1, 0)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 256), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(1000),
+            Halts::OnOrBefore(200),
             vec![(0, 256), (1, 1)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 257), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(1000),
+            Halts::OnOrBefore(200),
             vec![(0, 257), (1, 1)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 511), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(3000),
+            Halts::OnOrBefore(200),
             vec![(0, 511), (1, 1)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 512), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(3000),
+            Halts::OnOrBefore(200),
             vec![(0, 512), (1, 2)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 1023), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(13000),
+            Halts::OnOrBefore(200),
             vec![(0, 1023), (1, 3)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 1024), (1, 42), (2, 422)]),
-            Halts::OnOrBefore(13000),
+            Halts::OnOrBefore(200),
             vec![(0, 1024), (1, 4)],
         );
     }
 
     #[test]
-    #[ignore = "Do not capture the output! Also, it takes ages!"]
-    fn test_manual_div256_long() {
+    fn test_manual_div256_large() {
         let code = "
             # input is v0, output is v1 (DIFFERENT!)
             # ---
@@ -871,14 +944,14 @@ mod test {
         run_test(
             code,
             env_from(vec![(0, 2559)]),
-            Halts::OnOrBefore(77000), // Holy crap!
+            Halts::OnOrBefore(200),
             vec![(0, 2559), (1, 9)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 2560)]),
-            Halts::OnOrBefore(77000), // Holy crap!
+            Halts::OnOrBefore(200),
             vec![(0, 2560), (1, 10)],
         );
     }
