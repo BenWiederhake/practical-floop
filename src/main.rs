@@ -1,4 +1,4 @@
-#![feature(int_error_matching)]
+#![feature(int_error_matching, or_patterns)]
 
 #[macro_use]
 extern crate lazy_static;

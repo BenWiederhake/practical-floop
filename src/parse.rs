@@ -4,6 +4,7 @@ use std::iter::Peekable;
 
 use super::{IdentToken, nat, Natural, Token};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum CalcOrd {
     Cmp,
     Ne,
@@ -14,22 +15,133 @@ enum CalcOrd {
     Ge,
 }
 
+impl CalcOrd {
+    #[must_use]
+    fn gen_code (self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
+        use ParseStatement::*;
+        let v0mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
+        let v1mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
+        let rounds = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
+        let v0nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(3));
+        let v1nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(4));
+        let bothnonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(5));
+        let mut code = vec![
+            AddToInto(nat(0), lhs.clone(), v0mut.clone()),
+            AddToInto(nat(0), rhs.clone(), v1mut.clone()),
+            AddToInto(nat(2), lhs.clone(), rounds.clone()),
+            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
+            LoopDo(rounds.clone(), ParseBlock(vec![
+                LoopDo(bothnonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
+                    LoopDo(v0mut.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
+                    ])),
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
+                    LoopDo(v1mut.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
+                    ])),
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
+                    LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                        LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
+                        ])),
+                    ])),
+                    LoopDo(bothnonzero.clone(), ParseBlock(vec![
+                        SubtractFromInto(nat(1), v0mut.clone(), v0mut.clone()),
+                        SubtractFromInto(nat(1), v1mut.clone(), v1mut.clone()),
+                    ])),
+                ])),
+            ])),
+        ];
+        // assert ! _bothnonzero
+        // or in other words:
+        // assert _v0 == 0 or _v1 == 0
+        // also:
+        // assert ! ( _v0nonzero && _v1nonzero )
+        drop(v0mut);
+        drop(v1mut);
+        drop(rounds);
+        drop(bothnonzero);
+        code.append(&mut match self {
+            CalcOrd::Cmp => vec![
+                // 1 - v0nonzero + v1nonzero
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                    SubtractFromInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+            ],
+            CalcOrd::Ne => vec![
+                // 0 + v0nonzero + v1nonzero
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
+            ],
+            CalcOrd::Eq => vec![
+                // 1 - v0nonzero - v1nonzero
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
+            ],
+            CalcOrd::Lt => vec![
+                // = v1nonzero
+                AddToInto(nat(0), v1nonzero.clone(), dst.clone()),
+            ],
+            CalcOrd::Le => vec![
+                // 1 - v0nonzero
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                    SubtractFromInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+            ],
+            CalcOrd::Gt => vec![
+                // = v0nonzero
+                AddToInto(nat(0), v0nonzero.clone(), dst.clone()),
+            ],
+            CalcOrd::Ge => vec![
+                // 1 - v1nonzero
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                    SubtractFromInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+            ],
+        });
+
+        code
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum BinaryCalcOperation {
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    LogAnd,
+    LogOr,
     OrdQuery(CalcOrd),
-    // FIXME: More!
 }
 
 impl BinaryCalcOperation {
-    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
+    #[must_use]
+    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
+        /* Some, if not all of these implementations cannot handle the case where dst \in \{ lhs, rhs \}.
+         * CalcExpression handles this by copying all supplied idents to local registers first. */
         use BinaryCalcOperation::*;
         use ParseStatement::*;
         // See also exec::test::test_manual_*
-        into.append(&mut match self {
+        match self {
             Add => vec![
                 AddToInto(nat(0), lhs.clone(), dst.clone()),
                 LoopDo(rhs.clone(), ParseBlock(vec![
@@ -43,7 +155,37 @@ impl BinaryCalcOperation {
                 ])),
             ],
             Mul => vec![
-                unimplemented!(),
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(rhs.clone(), ParseBlock(vec![
+                    LoopDo(lhs.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), dst.clone(), dst.clone()),
+                    ])),
+                ])),
+            ],
+            LogAnd => vec![
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                // Sure we could use Mul's implementation.
+                // However, The outer loop would be too difficult to optimize,
+                // so we make sure that the outer loop only runs 0 or 1 times.
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), ParseIdent::Dynamic(DynamicIdent::CalcTemp(0))),
+                LoopDo(lhs.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), ParseIdent::Dynamic(DynamicIdent::CalcTemp(0))),
+                ])),
+                LoopDo(ParseIdent::Dynamic(DynamicIdent::CalcTemp(0)), ParseBlock(vec![
+                    LoopDo(rhs.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                    ])),
+                ])),
+            ],
+            LogOr => vec![
+                // 0 + lhs + rhs …ish.
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(lhs.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
+                LoopDo(rhs.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                ])),
             ],
             Div => vec![
                 unimplemented!(),
@@ -51,22 +193,24 @@ impl BinaryCalcOperation {
             Mod => vec![
                 unimplemented!(),
             ],
-            OrdQuery(_ord) => vec![
-                unimplemented!(),
-            ],
-        });
+            OrdQuery(ord) => ord.gen_code(lhs, rhs, dst),
+        }
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum CalcExpression {
     Constant(Natural),
     Ident(ParseIdent),
+    LogNot(Box<CalcExpression>),
     Binary(BinaryCalcOperation, Box<CalcExpression>, Box<CalcExpression>),
 }
 
 impl CalcExpression {
-    fn gen_code(self, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
-        self.gen_code_recursive(0, dst, into);
+    fn gen_code(self, dst: &ParseIdent) -> Vec<ParseStatement> {
+        let mut into = Vec::with_capacity(10);
+        self.gen_code_recursive(0, dst, &mut into);
+        into
     }
 
     fn gen_code_recursive(self, mut stack_depth: u32, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
@@ -87,7 +231,20 @@ impl CalcExpression {
                 stack_depth += 1;
                 rhs.gen_code_recursive(stack_depth, &rhs_ident, into);
 
-                op.gen_code(&lhs_ident, &rhs_ident, &dst, into);
+                into.append(&mut op.gen_code(&lhs_ident, &rhs_ident, &dst));
+            }
+            LogNot(sub) => {
+                let sub_ident = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth));
+                stack_depth += 1;
+                sub.gen_code_recursive(stack_depth, &sub_ident, into);
+
+                into.append(&mut vec![
+                    // 1 - sub_ident
+                    ParseStatement::AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                    ParseStatement::LoopDo(sub_ident.clone(), ParseBlock(vec![
+                        ParseStatement::AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                    ])),
+                ]);
             }
         }
     }
@@ -226,6 +383,51 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
         }
     }
 
+    fn parse_calc_expression(&mut self) -> Result<CalcExpression> {
+        use Token::*;
+        match self.next()? {
+            None => Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "Found EOF while expecting a calc expression.",
+            )),
+            Some(Number(nat)) => Ok(CalcExpression::Constant(nat)),
+            // TODO: Light code duplication here:
+            Some(Ident(IdentToken::FromNumber(id))) => {
+                Ok(CalcExpression::Ident(ParseIdent::Static(id)))
+            }
+            Some(Ident(IdentToken::FromString(id))) => {
+                Ok(CalcExpression::Ident(ParseIdent::Dynamic(DynamicIdent::Named(id))))
+            }
+            Some(LogNot) => {
+                Ok(CalcExpression::LogNot(Box::new(self.parse_calc_expression()?)))
+            }
+            Some(op_token @ (Plus | SatMinus | Mult | Div | Mod | OrdCmp | OrdNe | OrdEq | OrdLt | OrdLe | OrdGt | OrdGe | LogAnd | LogOr)) => {
+                let op = match op_token {
+                    Plus => BinaryCalcOperation::Add,
+                    SatMinus => BinaryCalcOperation::Sub,
+                    Mult => BinaryCalcOperation::Mul,
+                    Div => BinaryCalcOperation::Div,
+                    Mod => BinaryCalcOperation::Mod,
+                    OrdCmp => BinaryCalcOperation::OrdQuery(CalcOrd::Cmp),
+                    OrdNe => BinaryCalcOperation::OrdQuery(CalcOrd::Ne),
+                    OrdEq => BinaryCalcOperation::OrdQuery(CalcOrd::Eq),
+                    OrdLt => BinaryCalcOperation::OrdQuery(CalcOrd::Lt),
+                    OrdLe => BinaryCalcOperation::OrdQuery(CalcOrd::Le),
+                    OrdGt => BinaryCalcOperation::OrdQuery(CalcOrd::Gt),
+                    OrdGe => BinaryCalcOperation::OrdQuery(CalcOrd::Ge),
+                    LogAnd => BinaryCalcOperation::LogAnd,
+                    LogOr => BinaryCalcOperation::LogOr,
+                    _ => unreachable!(),
+                };
+                Ok(CalcExpression::Binary(op, Box::new(self.parse_calc_expression()?), Box::new(self.parse_calc_expression()?)))
+            }
+            Some(actual) => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("Expected calc expression, found '{:?}' instead.", actual),
+            )),
+        }
+    }
+
     fn parse_statement(&mut self) -> Result<ParseStatement> {
         use ParseStatement::*;
         match self.next()?.expect("only call before EOF") {
@@ -266,6 +468,12 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                 self.parse_expected(Token::End)?;
                 Ok(WhileDo(var, block))
             }
+            Token::Calc => {
+                let expr = self.parse_calc_expression()?;
+                self.parse_expected(Token::Into)?;
+                let dst = self.parse_ident()?;
+                Ok(DoTimes(nat(1), ParseBlock(expr.gen_code(&dst))))
+            }
             t => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("Cannot start statement with token '{:?}'.", t),
@@ -301,6 +509,103 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
         }
 
         Ok(ParseBlock(statements))
+    }
+}
+
+#[cfg(test)]
+mod test_calc_parse {
+    use super::super::nat;
+    use super::*;
+
+    fn parse_token_vec(vec: Vec<Token>) -> Result<CalcExpression> {
+        Parser::new(vec.into_iter().map(|t| Ok(t)).peekable()).parse_calc_expression()
+    }
+
+    #[test]
+    fn test_empty() {
+        assert!(parse_token_vec(vec![]).is_err());
+    }
+
+    #[test]
+    fn test_nat() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Number(nat(42)),
+        ]).unwrap();
+        let expected = CalcExpression::Constant(nat(42));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ignore_rest() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Number(nat(1)),
+            Number(nat(22)),
+            Number(nat(333)),
+        ]).unwrap();
+        let expected = CalcExpression::Constant(nat(1));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ident_num() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Ident(IdentToken::FromNumber(13)),
+        ]).unwrap();
+        let expected = CalcExpression::Ident(ParseIdent::Static(13));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_ident_str() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Ident(IdentToken::FromString("hello".into())),
+        ]).unwrap();
+        let expected = CalcExpression::Ident(ParseIdent::Dynamic(DynamicIdent::Named("hello".into())));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_plus() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Plus,
+            Number(nat(12)),
+            Ident(IdentToken::FromNumber(5)),
+        ]).unwrap();
+        let expected = CalcExpression::Binary(BinaryCalcOperation::Add,
+            Box::new(CalcExpression::Constant(nat(12))),
+            Box::new(CalcExpression::Ident(ParseIdent::Static(5))),
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_recursive() {
+        use Token::*;
+        let actual = parse_token_vec(vec![
+            Plus,
+            Plus,
+            Number(nat(1)),
+            Number(nat(2)),
+            Plus,
+            Number(nat(3)),
+            Number(nat(4)),
+        ]).unwrap();
+        let expected = CalcExpression::Binary(BinaryCalcOperation::Add,
+            Box::new(CalcExpression::Binary(BinaryCalcOperation::Add,
+                Box::new(CalcExpression::Constant(nat(1))),
+                Box::new(CalcExpression::Constant(nat(2))),
+            )),
+            Box::new(CalcExpression::Binary(BinaryCalcOperation::Add,
+                Box::new(CalcExpression::Constant(nat(3))),
+                Box::new(CalcExpression::Constant(nat(4))),
+            )),
+        );
+        assert_eq!(actual, expected);
     }
 }
 

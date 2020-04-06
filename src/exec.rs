@@ -170,6 +170,7 @@ impl PloopStatement {
                 // and that doing nothing here is actually non-trivial.
                 } else {
                     // TODO: Maybe this case can be improved?
+                    // Especially in case of multiplication
                     false
                 }
             }
@@ -1135,6 +1136,107 @@ mod test {
             env_from(vec![(0, 257), (1, 256)]),
             Halts::OnOrBefore(200),
             vec![(0, 257), (1, 256), (2, 1)],
+        );
+    }
+
+    #[test]
+    fn test_manual_cmp() {
+        let code = "
+            # input is v0 and v1, output is v2
+            add 0x0 to v0 into _v0
+            add 0x0 to v1 into _v1
+            add 0x2 to v0 into _rounds
+            add 0x1 to _zero into _bothnonzero
+            loop _rounds do
+                loop _bothnonzero do
+                    add 0x0 to _zero into _v0nonzero
+                    loop _v0 do
+                        add 0x1 to _zero into _v0nonzero
+                    end
+                    add 0x0 to _zero into _v1nonzero
+                    loop _v1 do
+                        add 0x1 to _zero into _v1nonzero
+                    end
+                    add 0x0 to _zero into _bothnonzero
+                    loop _v0nonzero do
+                        loop _v1nonzero do
+                            add 0x1 to _zero into _bothnonzero
+                        end
+                    end
+                    loop _bothnonzero do
+                        subtract 0x1 from _v0 into _v0
+                        subtract 0x1 from _v1 into _v1
+                    end
+                end
+            end
+            # assert ! _bothnonzero
+            # or in other words:
+            # assert _v0 == 0 or _v1 == 0
+            # also:
+            # assert ! ( _v0nonzero && _v1nonzero )
+            add 0x1 to _zero into v2
+            loop _v0nonzero do
+                subtract 0x1 from v2 into v2
+            end
+            loop _v1nonzero do
+                add 0x1 to v2 into v2
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 0), (1, 0), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 1), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 1), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 0), (1, 1), (2, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(250),
+            vec![(0, 10), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 13), (2, 99)]),
+            Halts::OnOrBefore(50),
+            vec![(0, 1), (1, 13), (2, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 1), (2, 123456)]),
+            Halts::OnOrBefore(50),
+            vec![(0, 5), (1, 1), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 3), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 0), (1, 3), (2, 2)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 3), (1, 0), (2, 2020)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 3), (1, 0), (2, 0)],
         );
     }
 }

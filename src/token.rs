@@ -135,12 +135,22 @@ pub enum Token {
     // <Recursion>
     // End
     // ---
-    // Calc,
-    // Plus,
-    // SatMinus,
-    // Mult,
-    // Div,
-    // Mod,
+    Calc,
+    Plus,
+    SatMinus,
+    Mult,
+    Div,
+    Mod,
+    OrdCmp,
+    OrdNe,
+    OrdEq,
+    OrdLt,
+    OrdLe,
+    OrdGt,
+    OrdGe,
+    LogAnd,
+    LogOr,
+    LogNot,
     // Number
     // Ident
     // Into
@@ -250,12 +260,22 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
             "end" => return Ok(End),
             "times" => return Ok(Times),
             "while" => return Ok(While),
-            // "calc"     => return Ok(Calc    ),
-            // "plus"     => return Ok(Plus    ),
-            // "satminus" => return Ok(SatMinus),
-            // "mult"     => return Ok(Mult    ),
-            // "div"      => return Ok(Div     ),
-            // "mod"      => return Ok(Mod     ),
+            "calc" => return Ok(Calc),
+            "+" => return Ok(Plus),
+            "-" => return Ok(SatMinus),
+            "*" => return Ok(Mult),
+            "/" => return Ok(Div),
+            "%" => return Ok(Mod),
+            "?=" => return Ok(OrdCmp),
+            "<>" => return Ok(OrdNe),
+            "==" => return Ok(OrdEq),
+            "<" => return Ok(OrdLt),
+            "<=" => return Ok(OrdLe),
+            ">" => return Ok(OrdGt),
+            ">=" => return Ok(OrdGe),
+            "&&" => return Ok(LogAnd),
+            "||" => return Ok(LogOr),
+            "!" => return Ok(LogNot),
             _ => {}
         }
         debug_assert!(!word.is_empty());
