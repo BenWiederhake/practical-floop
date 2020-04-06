@@ -24,7 +24,7 @@ fn parse_natural(digits: &str) -> Result<Natural> {
         None => {
             return Err(Error::new(
                 ErrorKind::InvalidData,
-                "Cannot parse natual '0'.  Did you mean '0x0'?",
+                "Cannot parse natural '0'.  Did you mean '0x0'?",
             ))
         }
         Some('b') => 2,

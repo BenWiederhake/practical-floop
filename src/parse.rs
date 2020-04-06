@@ -64,14 +64,21 @@ impl CalcOrd {
         drop(bothnonzero);
         code.append(&mut match self {
             CalcOrd::Cmp => vec![
-                // 1 - v0nonzero + v1nonzero
+                // 1 - v1nonzero + v0nonzero
                 AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
                     AddToInto(nat(1), dst.clone(), dst.clone()),
                 ])),
+                /*AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
+                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(10), dst.clone(), dst.clone()),
+                ])),
+                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                    AddToInto(nat(100), dst.clone(), dst.clone()),
+                ])),*/
             ],
             CalcOrd::Ne => vec![
                 // 0 + v0nonzero + v1nonzero
@@ -156,8 +163,8 @@ impl BinaryCalcOperation {
             ],
             Mul => vec![
                 AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(rhs.clone(), ParseBlock(vec![
-                    LoopDo(lhs.clone(), ParseBlock(vec![
+                LoopDo(lhs.clone(), ParseBlock(vec![
+                    LoopDo(rhs.clone(), ParseBlock(vec![
                         AddToInto(nat(1), dst.clone(), dst.clone()),
                     ])),
                 ])),

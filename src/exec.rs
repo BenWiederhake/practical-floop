@@ -615,6 +615,44 @@ mod test {
     }
 
     #[test]
+    fn test_calc_add() {
+        run_test(
+            "calc + 0x0 0x0 into v0",
+            env_from(vec![(0, 42)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0)],
+        );
+
+        run_test(
+            "calc + + 0x0 0x0 + 0x0 0x0 into v0",
+            env_from(vec![(0, 42)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0)],
+        );
+
+        run_test(
+            "calc + - 0x2 0x1 - 0x4 0x3 into v13",
+            env_from(vec![(0, 1337)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1337), (13, 2)],
+        );
+
+        run_test(
+            "calc + 0xa 0xa into v2",
+            env_from(vec![(0, 1337)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1337), (2, 20)],
+        );
+
+        run_test(
+            "calc + v1 v3 into v2",
+            env_from(vec![(0, 1337), (1, 42), (3, 13)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1337), (1, 42), (3, 13), (2, 55)],
+        );
+    }
+
+    #[test]
     fn test_manual_sub() {
         let code = "
             # input is v0 and v1, output is v2
@@ -663,6 +701,53 @@ mod test {
             code,
             env_from(vec![(0, 3), (1, 0), (2, 2020)]),
             Halts::OnOrBefore(5),
+            vec![(0, 3), (1, 0), (2, 3)],
+        );
+    }
+
+    #[test]
+    fn test_calc_sub() {
+        let code = "calc - v0 v1 into v2";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 10), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 42), (1, 13), (2, 99)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 42), (1, 13), (2, 29)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 48), (2, 123456)]),
+            Halts::OnOrBefore(100),
+            vec![(0, 5), (1, 48), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 3), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 3), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 3), (1, 0), (2, 2020)]),
+            Halts::OnOrBefore(10),
             vec![(0, 3), (1, 0), (2, 3)],
         );
     }
@@ -1012,6 +1097,60 @@ mod test {
     }
 
     #[test]
+    fn test_calc_mul() {
+        let code = "calc * v0 v1 into v2";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(40),
+            vec![(0, 10), (1, 10), (2, 100)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 13), (2, 99)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1), (1, 13), (2, 13)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 1), (2, 123456)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 5), (1, 1), (2, 5)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 3), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 3), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 3), (1, 0), (2, 2020)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 3), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 2), (1, 256), (2, 2020)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 2), (1, 256), (2, 512)],
+        );
+    }
+
+    #[test]
     fn test_manual_mod() {
         let code = "
             # input is v0 and v1, output is v2
@@ -1238,5 +1377,91 @@ mod test {
             Halts::OnOrBefore(30),
             vec![(0, 3), (1, 0), (2, 0)],
         );
+    }
+
+    fn cmp_helper(args: [u64; 2], results: [u64; 7]) {
+        for (i, op_str) in ["?=", "<>", "==", "<", "<=", ">", ">="].iter().enumerate() {
+            run_test(
+                &format!("calc {} v0 v1 into v2", op_str), // FIXME
+                env_from(vec![(0, args[0]), (1, args[1]), (2, 99), (99, i as u64)]),
+                Halts::OnOrBefore(300),
+                vec![(0, args[0]), (1, args[1]), (2, results[i])],
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_cmp() {
+        // Second argument order: Cmp, Ne, Eq, Lt, Le, Gt, Ge
+        cmp_helper([0, 0], [1, 0, 1, 0, 1, 0, 1]);
+        cmp_helper([1, 0], [2, 1, 0, 0, 0, 1, 1]);
+        cmp_helper([0, 1], [0, 1, 0, 1, 1, 0, 0]);
+        cmp_helper([1, 1], [1, 0, 1, 0, 1, 0, 1]);
+        cmp_helper([9, 9], [1, 0, 1, 0, 1, 0, 1]);
+        cmp_helper([5, 9], [0, 1, 0, 1, 1, 0, 0]);
+        cmp_helper([5, 1], [2, 1, 0, 0, 0, 1, 1]);
+        cmp_helper([0, 3], [0, 1, 0, 1, 1, 0, 0]);
+        cmp_helper([3, 0], [2, 1, 0, 0, 0, 1, 1]);
+    }
+
+    #[test]
+    fn test_calc_not() {
+        let code = "calc ! v0 into v2";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (2, 99)]),
+            Halts::OnOrBefore(6),
+            vec![(0, 0), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(6),
+            vec![(0, 1), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(6),
+            vec![(0, 1), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 999), (1, 1), (2, 123456)]),
+            Halts::OnOrBefore(6),
+            vec![(0, 999), (2, 0)],
+        );
+    }
+
+    fn logbin_helper(args: [u64; 2], results: [u64; 2]) {
+        for (i, op_str) in ["&&", "||"].iter().enumerate() {
+            run_test(
+                &format!("calc {} v0 v1 into v2", op_str), // FIXME
+                env_from(vec![(0, args[0]), (1, args[1]), (2, 99), (99, i as u64)]),
+                Halts::OnOrBefore(15),
+                vec![(0, args[0]), (1, args[1]), (2, results[i])],
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_logbin() {
+        // Second argument order: &&, ||
+
+        logbin_helper([0, 0], [0, 0]);
+        logbin_helper([0, 1], [0, 1]);
+        logbin_helper([1, 0], [0, 1]);
+        logbin_helper([1, 1], [1, 1]);
+
+        logbin_helper([0, 9], [0, 1]);
+        logbin_helper([9, 0], [0, 1]);
+        logbin_helper([9, 9], [1, 1]);
+
+        logbin_helper([18, 33], [1, 1]);
+        logbin_helper([42, 23], [1, 1]);
     }
 }
