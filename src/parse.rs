@@ -1,7 +1,97 @@
+use num_traits::identities::Zero;
 use std::io::{Error, ErrorKind, Result};
 use std::iter::Peekable;
 
-use super::{IdentToken, Natural, Token};
+use super::{IdentToken, nat, Natural, Token};
+
+enum CalcOrd {
+    Cmp,
+    Ne,
+    Eq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+enum BinaryCalcOperation {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    OrdQuery(CalcOrd),
+    // FIXME: More!
+}
+
+impl BinaryCalcOperation {
+    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
+        use BinaryCalcOperation::*;
+        use ParseStatement::*;
+        // See also exec::test::test_manual_*
+        into.append(&mut match self {
+            Add => vec![
+                AddToInto(nat(0), lhs.clone(), dst.clone()),
+                LoopDo(rhs.clone(), ParseBlock(vec![
+                    AddToInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+            ],
+            Sub => vec![
+                AddToInto(nat(0), lhs.clone(), dst.clone()),
+                LoopDo(rhs.clone(), ParseBlock(vec![
+                    SubtractFromInto(nat(1), dst.clone(), dst.clone()),
+                ])),
+            ],
+            Mul => vec![
+                unimplemented!(),
+            ],
+            Div => vec![
+                unimplemented!(),
+            ],
+            Mod => vec![
+                unimplemented!(),
+            ],
+            OrdQuery(_ord) => vec![
+                unimplemented!(),
+            ],
+        });
+    }
+}
+
+enum CalcExpression {
+    Constant(Natural),
+    Ident(ParseIdent),
+    Binary(BinaryCalcOperation, Box<CalcExpression>, Box<CalcExpression>),
+}
+
+impl CalcExpression {
+    fn gen_code(self, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
+        self.gen_code_recursive(0, dst, into);
+    }
+
+    fn gen_code_recursive(self, mut stack_depth: u32, dst: &ParseIdent, into: &mut Vec<ParseStatement>) {
+        use CalcExpression::*;
+        match self {
+            Constant(n) => {
+                into.push(ParseStatement::AddToInto(n, ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()));
+            }
+            Ident(ident) => {
+                into.push(ParseStatement::AddToInto(Natural::zero(), ident, dst.clone()));
+            }
+            Binary(op, lhs, rhs) => {
+                let lhs_ident = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth));
+                stack_depth += 1;
+                lhs.gen_code_recursive(stack_depth, &lhs_ident, into);
+
+                let rhs_ident = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth));
+                stack_depth += 1;
+                rhs.gen_code_recursive(stack_depth, &rhs_ident, into);
+
+                op.gen_code(&lhs_ident, &rhs_ident, &dst, into);
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseBlock(Vec<ParseStatement>);
@@ -46,8 +136,10 @@ pub enum ParseStatement {
 
 #[derive(Clone, Debug, Ord, Eq, PartialOrd, PartialEq)]
 pub enum DynamicIdent {
+    Zero,
     Named(String),
-    // TODO: Introduce the other temporaries
+    CalcIntermediate(u32),
+    CalcTemp(u32),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
