@@ -670,7 +670,7 @@ mod test {
     fn test_manual_div() {
         let code = "
             # input is v0 and v1, output is v2
-            # Note: We don't care about v1 == 1
+            # Note: We don't care about v1 == 0
             # ---
             # We would like a 'set to zero' operation, but there is none.
             add 0x0 to v1 into _zero
@@ -771,14 +771,14 @@ mod test {
         run_test(
             code,
             env_from(vec![(0, 255), (1, 256)]),
-            Halts::OnOrBefore(196608),
+            Halts::OnOrBefore(200),
             vec![(0, 255), (1, 256), (2, 0)],
         );
 
         run_test(
             code,
             env_from(vec![(0, 256), (1, 256)]),
-            Halts::OnOrBefore(196608),
+            Halts::OnOrBefore(200),
             vec![(0, 256), (1, 256), (2, 1)],
         );
 
@@ -952,6 +952,189 @@ mod test {
             env_from(vec![(0, 2560)]),
             Halts::OnOrBefore(200),
             vec![(0, 2560), (1, 10)],
+        );
+    }
+
+    #[test]
+    fn test_manual_mul() {
+        let code = "
+            # input is v0 and v1, output is v2
+            add 0x0 to _zero into v2
+            loop v0 do
+                loop v1 do
+                    add 0x1 to v2 into v2
+                end
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (2, 99)]),
+            Halts::OnOrBefore(4),
+            vec![(0, 0), (1, 0), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10), (2, 1337)]),
+            Halts::OnOrBefore(35),
+            vec![(0, 10), (1, 10), (2, 100)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 13), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 1), (1, 13), (2, 13)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 5), (1, 1), (2, 123456)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 5), (1, 1), (2, 5)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 3), (2, 99)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 0), (1, 3), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 3), (1, 0), (2, 2020)]),
+            Halts::OnOrBefore(10),
+            vec![(0, 3), (1, 0), (2, 0)],
+        );
+    }
+
+    #[test]
+    fn test_manual_mod() {
+        let code = "
+            # input is v0 and v1, output is v2
+            # Note: We don't care about v1 == 0
+            # Note: Mostly copied from 'manual_div'. This can probably be improved.
+            # ---
+            # We would like a 'set to zero' operation, but there is none.
+            add 0x0 to v1 into _zero
+            loop _zero do
+                subtract 0x1 from _zero into _zero
+            end
+            add 0x0 to _zero into v2
+            add 0x1 to _zero into _unsure
+            add 0x1 to v0 into _overremainder
+            add 0x0 to _overremainder into _oldoverremainder
+            # Invariants:
+            # _zero == 0
+            # (_unsure == 0) implies v2 * v1 + _overremainder == v0 + 1
+            # (_unsure == 1) implies v2 == floor(v0/v1)
+            loop v0 do
+                loop _unsure do
+                    # Compute next _overremainder
+                    loop v1 do
+                        subtract 0x1 from _overremainder into _overremainder
+                    end
+                    # If _overremainder is still larger than 0,
+                    # then the current remainder was >= v1 (_overremainder > v1),
+                    # so v2 wasn't the answer.
+                    add 0x0 to _zero into _unsure
+                    loop _overremainder do
+                        add 0x1 to _zero into _unsure
+                    end
+                    # And if v2 wasn't the answer, try v2+1 next:
+                    loop _unsure do
+                        add 0x1 to v2 into v2
+                        add 0x0 to _overremainder into _oldoverremainder
+                    end
+                end
+            end
+            subtract 0x1 from _oldoverremainder into v2
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 1)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 1), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 2)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 2), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 10), (2, 99)]),
+            Halts::OnOrBefore(99),
+            vec![(0, 1), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 9), (1, 10)]),
+            Halts::OnOrBefore(99),
+            vec![(0, 9), (1, 10), (2, 9)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 10), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 10), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 11), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 11), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 19), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 19), (1, 10), (2, 9)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 20), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 20), (1, 10), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 21), (1, 10)]),
+            Halts::OnOrBefore(300),
+            vec![(0, 21), (1, 10), (2, 1)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 255), (1, 256)]),
+            Halts::OnOrBefore(200),
+            vec![(0, 255), (1, 256), (2, 255)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 256), (1, 256)]),
+            Halts::OnOrBefore(200),
+            vec![(0, 256), (1, 256), (2, 0)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 257), (1, 256)]),
+            Halts::OnOrBefore(200),
+            vec![(0, 257), (1, 256), (2, 1)],
         );
     }
 }
