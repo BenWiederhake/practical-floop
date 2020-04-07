@@ -1464,4 +1464,84 @@ mod test {
         logbin_helper([18, 33], [1, 1]);
         logbin_helper([42, 23], [1, 1]);
     }
+
+    #[test]
+    fn test_if_then() {
+        let code = "if v0 do add 0x1 to v1 into v1 end";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 5)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 5)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 1), (1, 5)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 1), (1, 6)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 9), (1, 5)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 9), (1, 6)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 23)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 0), (1, 23)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 9), (1, 23)]),
+            Halts::OnOrBefore(20),
+            vec![(0, 9), (1, 24)],
+        );
+    }
+
+    #[test]
+    fn test_if_then_recursion() {
+        let code = "
+            if v0 do
+                add 0x1 to v10 into v10
+                if v1 do
+                    add 0x1 to v11 into v11
+                end
+            end
+        ";
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 0), (10, 34), (11, 56)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 0), (1, 0), (10, 34), (11, 56)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 0), (1, 12), (10, 34), (11, 56)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 0), (1, 12), (10, 34), (11, 56)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 7), (1, 0), (10, 34), (11, 56)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 7), (1, 0), (10, 35), (11, 56)],
+        );
+
+        run_test(
+            code,
+            env_from(vec![(0, 7), (1, 7), (10, 34), (11, 56)]),
+            Halts::OnOrBefore(30),
+            vec![(0, 7), (1, 7), (10, 35), (11, 57)],
+        );
+    }
 }

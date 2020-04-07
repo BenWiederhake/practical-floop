@@ -156,6 +156,11 @@ pub enum Token {
     // Into
     // Ident
     // ---
+    If,
+    // Exprstuff
+    // Do,
+    // <Recursion>
+    // Else,
 }
 
 pub struct Tokenizer<I> {
@@ -261,6 +266,8 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
             "times" => return Ok(Times),
             "while" => return Ok(While),
             "calc" => return Ok(Calc),
+            "if" => return Ok(If),
+            // "else" => return Ok(Else),
             "+" => return Ok(Plus),
             "-" => return Ok(SatMinus),
             "*" => return Ok(Mult),
@@ -407,6 +414,26 @@ mod test_tokenizer {
                 End,
                 Ident(IdentToken::FromNumber(1337)),
                 Times
+            ]
+        );
+        assert!(maybe_error.is_none());
+    }
+
+    #[test]
+    fn test_boring() {
+        use Token::*;
+        let (tokens, maybe_error) = tokenize_string("
+            add to into subtract from loop do end times while calc
+            + - * / % ?= <> == < <= > >= && || !
+            if # else
+        ");
+
+        assert_eq!(
+            tokens,
+            vec![
+                Add, To, Into, Subtract, From, Loop, Do, End,
+                Times, While, Calc, Plus, SatMinus, Mult, Div, Mod, OrdCmp, OrdNe, OrdEq,
+                OrdLt, OrdLe, OrdGt, OrdGe, LogAnd, LogOr, LogNot, If,
             ]
         );
         assert!(maybe_error.is_none());

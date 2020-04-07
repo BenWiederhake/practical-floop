@@ -291,9 +291,6 @@ pub enum ParseStatement {
     LoopDo(ParseIdent, ParseBlock),
     DoTimes(Natural, ParseBlock),
     WhileDo(ParseIdent, ParseBlock),
-    // Calc
-    // IfThen
-    // IfElse
     // ForIn
     // SplitInto
 }
@@ -304,6 +301,7 @@ pub enum DynamicIdent {
     Named(String),
     CalcIntermediate(u32),
     CalcTemp(u32),
+    If, // Due to 'Else' we will need an argument eventually.
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -481,6 +479,30 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                 let dst = self.parse_ident()?;
                 Ok(DoTimes(nat(1), ParseBlock(expr.gen_code(&dst))))
             }
+            Token::If => {
+                let expr = CalcExpression::LogNot(Box::new(
+                    CalcExpression::LogNot(Box::new(
+                        self.parse_calc_expression()?
+                    ))
+                ));
+                self.parse_expected(Token::Do)?;
+                let block_then = self.parse_block(false)?;
+                // TODO: Support "else".
+                // let block_else = match self.next()? {
+                //     None => return Err(Error::new(
+                //         ErrorKind::UnexpectedEof,
+                //         "Found EOF while end of 'if' block; missing 'end' token?",
+                //     ))
+                //     Some(Token::End) => None,
+                //     Some(Token::Else) => Some(self.parse_block(false)),
+                // };
+                self.parse_expected(Token::End)?;
+                let condition = ParseIdent::Dynamic(DynamicIdent::If);
+                let mut code = expr.gen_code(&condition);
+                code.push(LoopDo(condition, block_then));
+                // code.push(LoopDo(inv_condition, block_else))
+                Ok(DoTimes(nat(1), ParseBlock(code)))
+            }
             t => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("Cannot start statement with token '{:?}'.", t),
@@ -503,7 +525,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                         break;
                     }
                 }
-                Some(&Token::End) => {
+                Some(&(Token::End /*| Token::Else*/)) => {
                     if is_outermost {
                         return Err(Error::new(ErrorKind::InvalidData, "Unmatched 'end' token"));
                     } else {
