@@ -26,6 +26,7 @@ impl CalcOrd {
         let v1nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(4));
         let bothnonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(5));
         let mut code = vec![
+            // TODO: This can be massively simplified!
             AddToInto(nat(0), lhs.clone(), v0mut.clone()),
             AddToInto(nat(0), rhs.clone(), v1mut.clone()),
             AddToInto(nat(2), lhs.clone(), rounds.clone()),
@@ -72,13 +73,6 @@ impl CalcOrd {
                 LoopDo(v0nonzero.clone(), ParseBlock(vec![
                     AddToInto(nat(1), dst.clone(), dst.clone()),
                 ])),
-                /*AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
-                    AddToInto(nat(10), dst.clone(), dst.clone()),
-                ])),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
-                    AddToInto(nat(100), dst.clone(), dst.clone()),
-                ])),*/
             ],
             CalcOrd::Ne => vec![
                 // 0 + v0nonzero + v1nonzero
@@ -123,6 +117,66 @@ impl CalcOrd {
                 ])),
             ],
         });
+
+        code
+    }
+}
+
+enum DivMod {
+    Div,
+    Mod,
+    Take,
+}
+
+impl DivMod {
+    #[must_use]
+    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
+        use ParseStatement::*;
+        let unsure = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
+        let res_div = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
+        let res_mod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
+        let next_overmod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(3));
+
+        let mut code = vec![
+            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), res_div.clone()),
+            AddToInto(nat(0), lhs.clone(), res_mod.clone()),
+
+            // Invariants:
+            // res_div * rhs + res_mod == lhs
+            // (unsure == 0) implies res_div == floor(lhs / rhs)
+            LoopDo(lhs.clone(), ParseBlock(vec![
+                LoopDo(unsure.clone(), ParseBlock(vec![
+                    // Compute (res_mod + 1) - rhs
+                    AddToInto(nat(1), res_mod.clone(), next_overmod.clone()),
+                    LoopDo(rhs.clone(), ParseBlock(vec![
+                        SubtractFromInto(nat(1), next_overmod.clone(), next_overmod.clone()),
+                    ])),
+                    // If next_overmod is > 0, then res_mod was >= rhs.
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
+                    LoopDo(next_overmod.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
+                    ])),
+                    // And if that wasn't the answer, need to increment:
+                    LoopDo(unsure.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), res_div.clone(), res_div.clone()),
+                        // This "add one subtract one" game is a bit tedious.
+                        // TODO: Optimize "div" calc
+                        SubtractFromInto(nat(1), next_overmod.clone(), res_mod.clone()),
+                    ])),
+                ])),
+            ])),
+        ];
+        match self {
+            DivMod::Div =>
+                code.push(AddToInto(nat(0), res_div.clone(), dst.clone())),
+            DivMod::Mod =>
+                code.push(AddToInto(nat(0), res_mod.clone(), dst.clone())),
+            DivMod::Take => {
+                code.push(AddToInto(nat(0), res_div.clone(), lhs.clone()));
+                code.push(AddToInto(nat(0), res_mod.clone(), dst.clone()));
+            }
+        }
 
         code
     }
@@ -194,12 +248,8 @@ impl BinaryCalcOperation {
                     AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
             ],
-            Div => vec![
-                unimplemented!(),
-            ],
-            Mod => vec![
-                unimplemented!(),
-            ],
+            Div => DivMod::Div.gen_code(lhs, rhs, dst),
+            Mod => DivMod::Mod.gen_code(lhs, rhs, dst),
             OrdQuery(ord) => ord.gen_code(lhs, rhs, dst),
         }
     }

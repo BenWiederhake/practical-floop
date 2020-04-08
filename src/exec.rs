@@ -1544,4 +1544,59 @@ mod test {
             vec![(0, 7), (1, 7), (10, 35), (11, 57)],
         );
     }
+
+    fn divmod_helper(args: [u64; 2], time: u32, results: [u64; 2]) {
+        for (i, op_str) in ["/", "%"].iter().enumerate() {
+            run_test(
+                &format!("calc {} v0 v1 into v2", op_str),
+                env_from(vec![(0, args[0]), (1, args[1]), (2, 1337), (100, i as u64)]),
+                Halts::OnOrBefore(time),
+                vec![(0, args[0]), (1, args[1]), (2, results[i])],
+            );
+        }
+    }
+
+    #[test]
+    fn test_calc_divmod_div0() {
+        divmod_helper([0, 0], 30, [0, 0]);
+        divmod_helper([10, 0], 300, [10, 10]);
+        divmod_helper([20, 0], 600, [20, 20]);
+    }
+
+    #[test]
+    fn test_calc_divmod() {
+        // Canary up front:
+        divmod_helper([25, 10], 60, [2, 5]);
+
+        divmod_helper([0, 1], 20, [0, 0]);
+        divmod_helper([0, 2], 20, [0, 0]);
+        divmod_helper([0, 999], 20, [0, 0]);
+
+        divmod_helper([1, 1], 30, [1, 0]);
+        divmod_helper([2, 1], 60, [2, 0]);
+        divmod_helper([3, 1], 90, [3, 0]);
+        divmod_helper([10, 1], 300, [10, 0]);
+
+        divmod_helper([8, 10], 60, [0, 8]);
+        divmod_helper([9, 10], 60, [0, 9]);
+        divmod_helper([10, 10], 60, [1, 0]);
+        divmod_helper([11, 10], 60, [1, 1]);
+        divmod_helper([19, 10], 90, [1, 9]);
+        divmod_helper([20, 10], 90, [2, 0]);
+        divmod_helper([21, 10], 90, [2, 1]);
+    }
+
+    #[test]
+    #[ignore = "Too slow for regular checks"]
+    fn test_calc_divmod_large() {
+        divmod_helper([254, 256], 60, [0, 254]);
+        divmod_helper([255, 256], 60, [0, 255]);
+        divmod_helper([256, 256], 60, [1, 0]);
+        divmod_helper([257, 256], 60, [1, 1]);
+
+        divmod_helper([65534, 256], 8000, [255, 254]);
+        divmod_helper([65535, 256], 8000, [255, 255]);
+        divmod_helper([65536, 256], 8000, [256, 0]);
+        divmod_helper([65537, 256], 8000, [256, 1]);
+    }
 }
