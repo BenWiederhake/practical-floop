@@ -2,7 +2,7 @@ use num_traits::identities::Zero;
 use std::io::{Error, ErrorKind, Result};
 use std::iter::Peekable;
 
-use super::{IdentToken, nat, Natural, Token};
+use super::{nat, IdentToken, Natural, Token};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum CalcOrd {
@@ -17,7 +17,7 @@ enum CalcOrd {
 
 impl CalcOrd {
     #[must_use]
-    fn gen_code (self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
+    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
         use ParseStatement::*;
         let v0mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
         let v1mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
@@ -67,52 +67,52 @@ impl CalcOrd {
             CalcOrd::Cmp => vec![
                 // 1 - v1nonzero + v0nonzero
                 AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                LoopDo(v1nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                LoopDo(v0nonzero, ParseBlock(vec![
                     AddToInto(nat(1), dst.clone(), dst.clone()),
                 ])),
             ],
             CalcOrd::Ne => vec![
                 // 0 + v0nonzero + v1nonzero
                 AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                LoopDo(v0nonzero, ParseBlock(vec![
                     AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                LoopDo(v1nonzero, ParseBlock(vec![
                     AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
             ],
             CalcOrd::Eq => vec![
                 // 1 - v0nonzero - v1nonzero
                 AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                LoopDo(v0nonzero, ParseBlock(vec![
                     AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                LoopDo(v1nonzero, ParseBlock(vec![
                     AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
             ],
             CalcOrd::Lt => vec![
                 // = v1nonzero
-                AddToInto(nat(0), v1nonzero.clone(), dst.clone()),
+                AddToInto(nat(0), v1nonzero, dst.clone()),
             ],
             CalcOrd::Le => vec![
                 // 1 - v0nonzero
                 AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v0nonzero.clone(), ParseBlock(vec![
+                LoopDo(v0nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
             ],
             CalcOrd::Gt => vec![
                 // = v0nonzero
-                AddToInto(nat(0), v0nonzero.clone(), dst.clone()),
+                AddToInto(nat(0), v0nonzero, dst.clone()),
             ],
             CalcOrd::Ge => vec![
                 // 1 - v1nonzero
                 AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                LoopDo(v1nonzero.clone(), ParseBlock(vec![
+                LoopDo(v1nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
             ],
@@ -169,12 +169,12 @@ impl DivMod {
         ];
         match self {
             DivMod::Div =>
-                code.push(AddToInto(nat(0), res_div.clone(), dst.clone())),
+                code.push(AddToInto(nat(0), res_div, dst.clone())),
             DivMod::Mod =>
-                code.push(AddToInto(nat(0), res_mod.clone(), dst.clone())),
+                code.push(AddToInto(nat(0), res_mod, dst.clone())),
             DivMod::Take => {
-                code.push(AddToInto(nat(0), res_div.clone(), lhs.clone()));
-                code.push(AddToInto(nat(0), res_mod.clone(), dst.clone()));
+                code.push(AddToInto(nat(0), res_div, lhs.clone()));
+                code.push(AddToInto(nat(0), res_mod, dst.clone()));
             }
         }
 
@@ -298,7 +298,7 @@ impl CalcExpression {
                 into.append(&mut vec![
                     // 1 - sub_ident
                     ParseStatement::AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
-                    ParseStatement::LoopDo(sub_ident.clone(), ParseBlock(vec![
+                    ParseStatement::LoopDo(sub_ident, ParseBlock(vec![
                         ParseStatement::AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                     ])),
                 ]);
