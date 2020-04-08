@@ -1382,7 +1382,7 @@ mod test {
     fn cmp_helper(args: [u64; 2], results: [u64; 7]) {
         for (i, op_str) in ["?=", "<>", "==", "<", "<=", ">", ">="].iter().enumerate() {
             run_test(
-                &format!("calc {} v0 v1 into v2", op_str), // FIXME
+                &format!("calc {} v0 v1 into v2", op_str),
                 env_from(vec![(0, args[0]), (1, args[1]), (2, 99), (99, i as u64)]),
                 Halts::OnOrBefore(25),
                 vec![(0, args[0]), (1, args[1]), (2, results[i])],
@@ -1440,7 +1440,7 @@ mod test {
     fn logbin_helper(args: [u64; 2], results: [u64; 2]) {
         for (i, op_str) in ["&&", "||"].iter().enumerate() {
             run_test(
-                &format!("calc {} v0 v1 into v2", op_str), // FIXME
+                &format!("calc {} v0 v1 into v2", op_str),
                 env_from(vec![(0, args[0]), (1, args[1]), (2, 99), (99, i as u64)]),
                 Halts::OnOrBefore(15),
                 vec![(0, args[0]), (1, args[1]), (2, results[i])],
