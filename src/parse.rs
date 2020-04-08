@@ -19,50 +19,31 @@ impl CalcOrd {
     #[must_use]
     fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
         use ParseStatement::*;
-        let v0mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
-        let v1mut = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
-        let rounds = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
-        let v0nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(3));
-        let v1nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(4));
-        let bothnonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(5));
+        let tmp = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
+        let v0nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
+        let v1nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
         let mut code = vec![
-            // TODO: This can be massively simplified!
-            AddToInto(nat(0), lhs.clone(), v0mut.clone()),
-            AddToInto(nat(0), rhs.clone(), v1mut.clone()),
-            AddToInto(nat(2), lhs.clone(), rounds.clone()),
-            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
-            LoopDo(rounds.clone(), ParseBlock(vec![
-                LoopDo(bothnonzero.clone(), ParseBlock(vec![
-                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
-                    LoopDo(v0mut.clone(), ParseBlock(vec![
-                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
-                    ])),
-                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
-                    LoopDo(v1mut.clone(), ParseBlock(vec![
-                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
-                    ])),
-                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
-                    LoopDo(v0nonzero.clone(), ParseBlock(vec![
-                        LoopDo(v1nonzero.clone(), ParseBlock(vec![
-                            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), bothnonzero.clone()),
-                        ])),
-                    ])),
-                    LoopDo(bothnonzero.clone(), ParseBlock(vec![
-                        SubtractFromInto(nat(1), v0mut.clone(), v0mut.clone()),
-                        SubtractFromInto(nat(1), v1mut.clone(), v1mut.clone()),
-                    ])),
-                ])),
+            // v0nonzero := (lhs - rhs) > 0
+            AddToInto(nat(0), lhs.clone(), tmp.clone()),
+            LoopDo(rhs.clone(), ParseBlock(vec![
+                SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
+            ])),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
+            LoopDo(tmp.clone(), ParseBlock(vec![
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
+            ])),
+            // v1nonzero := (rhs - lhs) > 0
+            AddToInto(nat(0), rhs.clone(), tmp.clone()),
+            LoopDo(lhs.clone(), ParseBlock(vec![
+                SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
+            ])),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
+            LoopDo(tmp.clone(), ParseBlock(vec![
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
             ])),
         ];
-        // assert ! _bothnonzero
-        // or in other words:
-        // assert _v0 == 0 or _v1 == 0
-        // also:
         // assert ! ( _v0nonzero && _v1nonzero )
-        drop(v0mut);
-        drop(v1mut);
-        drop(rounds);
-        drop(bothnonzero);
+        drop(tmp);
         code.append(&mut match self {
             CalcOrd::Cmp => vec![
                 // 1 - v1nonzero + v0nonzero

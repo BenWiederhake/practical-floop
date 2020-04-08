@@ -1384,7 +1384,7 @@ mod test {
             run_test(
                 &format!("calc {} v0 v1 into v2", op_str), // FIXME
                 env_from(vec![(0, args[0]), (1, args[1]), (2, 99), (99, i as u64)]),
-                Halts::OnOrBefore(300),
+                Halts::OnOrBefore(25),
                 vec![(0, args[0]), (1, args[1]), (2, results[i])],
             );
         }
