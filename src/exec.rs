@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Error, Result};
 use std::iter::IntoIterator;
 use std::ops::{Deref, Index, IndexMut, SubAssign};
@@ -20,6 +21,12 @@ lazy_static! {
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialOrd, PartialEq)]
 pub struct VarIdent(pub u32);
 
+impl Display for VarIdent {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "v{}", self.0)
+    }
+}
+
 // TODO: Is the `Rc` here *actually* a good idea?
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PloopBlock(Rc<Vec<PloopStatement>>);
@@ -32,6 +39,12 @@ impl PloopBlock {
         Ok(PloopBlock::from(&parsed_block))
     }
 
+    pub fn try_from_iter_verbose<I: Iterator<Item = Result<char>>>(iter: I) -> Result<(PloopBlock, String)> {
+        let token_iter = Tokenizer::new(iter);
+        let parsed_block = ParseBlock::try_from_iter(token_iter)?;
+        Ok(PloopBlock::from_verbose(&parsed_block))
+    }
+
     fn try_loop_shortcut(&self, amount: &Natural, conf: &mut Configuration) -> bool {
         if self.0.len() > 1 {
             // Only handle single statements for now.
@@ -40,6 +53,16 @@ impl PloopBlock {
         }
         assert!(!amount.is_zero());
         self.0[0].try_loop_shortcut(amount, conf)
+    }
+
+    fn statements(&self) -> &[PloopStatement] {
+        &**self.0
+    }
+
+    fn from_verbose(block: &ParseBlock) -> (PloopBlock, String) {
+        let mut r = Resolver::new();
+        r.reserve_static(block);
+        (r.resolve_remaining(block), r.make_table())
     }
 }
 
@@ -99,7 +122,10 @@ impl PloopStatement {
                 }
             }
             LoopDo(var, block) => {
-                conf.push(DoTimes(conf.state[&var].clone(), block));
+                let amount = conf.state[&var].clone();
+                if !amount.is_zero() {
+                    conf.push(DoTimes(amount, block));
+                }
             }
             DoTimes(mut amount, block) => {
                 if amount.is_zero() {
@@ -110,7 +136,9 @@ impl PloopStatement {
                     // Nothing to do.
                 } else {
                     amount = amount.checked_sub(&nat(1)).unwrap();
-                    conf.push(DoTimes(amount, block.clone()));
+                    if !amount.is_zero() {
+                        conf.push(DoTimes(amount, block.clone()));
+                    }
                     conf.push_all(&block);
                 }
             }
@@ -184,7 +212,7 @@ impl PloopStatement {
 }
 
 // TODO: Consider a splay tree, as accesses are going to be repetitive.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Environment(BTreeMap<VarIdent, Natural>);
 
 impl Environment {
@@ -196,6 +224,14 @@ impl Environment {
 
     pub fn iter(&self) -> impl Iterator<Item = (&VarIdent, &Natural)> {
         self.0.iter()
+    }
+}
+
+impl Debug for Environment {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_map().entries(self.0.iter().map(|(k, v)|
+            (format!("{}", k), format!("0x{:X}", v))
+        )).finish()
     }
 }
 
@@ -224,7 +260,7 @@ impl IndexMut<&VarIdent> for Environment {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Configuration {
     state: Environment,
     stack: Vec<PloopStatement>,
@@ -279,6 +315,68 @@ impl Deref for Configuration {
     }
 }
 
+pub trait PrettyPrint {
+    fn fmt(&self, level: usize, f: &mut Formatter) -> fmt::Result;
+}
+
+impl PrettyPrint for PloopBlock {
+    fn fmt(&self, level: usize, f: &mut Formatter) -> fmt::Result {
+        for stmt in self.statements() {
+            PrettyPrint::fmt(stmt, level, f)?;
+        }
+        Ok(())
+    }
+}
+
+impl PrettyPrint for PloopStatement {
+    fn fmt(&self, level: usize, f: &mut Formatter) -> fmt::Result {
+        use PloopStatement::*;
+        let levelindent = "    ".to_string().repeat(level);
+        match self {
+            AddToInto(amount, src, dst) => {
+                write!(f, "{}add 0x{:X} to {} into {}\n",
+                    levelindent, amount, src, dst)
+            }
+            SubtractFromInto(amount, src, dst) => {
+                write!(f, "{}subtract 0x{:X} from {} into {}\n",
+                    levelindent, amount, src, dst)
+            }
+            LoopDo(var, block) => {
+                write!(f, "{}loop {} do\n",
+                    levelindent, var)?;
+                PrettyPrint::fmt(block, level + 1, f)?;
+                write!(f, "{}end\n", levelindent)
+            }
+            DoTimes(amount, block) => {
+                write!(f, "{}do 0x{:X} times\n",
+                    levelindent, amount)?;
+                PrettyPrint::fmt(block, level + 1, f)?;
+                write!(f, "{}end\n", levelindent)
+            }
+            WhileDo(var, block) => {
+                write!(f, "{}while {} times\n",
+                    levelindent, var)?;
+                PrettyPrint::fmt(block, level + 1, f)?;
+                write!(f, "{}end\n", levelindent)
+            }
+        }
+    }
+}
+
+impl Debug for Configuration {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str("Configuration {\n")?;
+        write!(f, "    state: {:?}\n", self.state)?;
+        write!(f, "    stack: [\n")?;
+        for stmt in &self.stack {
+            PrettyPrint::fmt(stmt, 2, f)?;
+            write!(f, "    ,\n")?;
+        }
+        write!(f, "    ]\n")?;
+        f.write_str("}")
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::super::nat;
@@ -309,20 +407,21 @@ mod test {
     }
 
     fn observe(code: &str, input: Environment, max_steps: u32) -> (Halts, Configuration) {
-        let program = PloopBlock::try_from(code).expect("bad code");
+        let (program, table) = PloopBlock::try_from_iter_verbose(code.chars().map(Ok)).expect("bad code");
         let mut conf = Configuration::from_state(input, &program);
         println!("Initial configuration: {:?}", conf);
+        println!("Table is: {}", table);
 
         let mut actual_steps = 0;
-        for i in 0..max_steps {
+        for _ in 0..max_steps {
             if !conf.is_completed() {
                 actual_steps += 1;
                 conf.step();
-                println!("Configuration after step #{}: {:?}", i, conf);
             } else {
                 break;
             }
         }
+        println!("Configuration after step #{}: {:?}", actual_steps, conf);
         let halts = if conf.is_completed() {
             println!("Done (halted)");
             Halts::OnOrBefore(actual_steps)
@@ -330,6 +429,7 @@ mod test {
             println!("Done (stopped)");
             Halts::NotEvenAfter(actual_steps)
         };
+        println!("Table is (still): {}", table);
 
         (halts, conf)
     }
@@ -1557,6 +1657,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_calc_divmod_div0() {
         divmod_helper([0, 0], 30, [0, 0]);
         divmod_helper([10, 0], 300, [10, 10]);
@@ -1572,10 +1673,10 @@ mod test {
         divmod_helper([0, 2], 20, [0, 0]);
         divmod_helper([0, 999], 20, [0, 0]);
 
-        divmod_helper([1, 1], 30, [1, 0]);
+        divmod_helper([1, 1], 35, [1, 0]);
         divmod_helper([2, 1], 60, [2, 0]);
         divmod_helper([3, 1], 90, [3, 0]);
-        divmod_helper([10, 1], 300, [10, 0]);
+        divmod_helper([10, 1], 200, [10, 0]);
 
         divmod_helper([8, 10], 60, [0, 8]);
         divmod_helper([9, 10], 60, [0, 9]);
@@ -1587,16 +1688,76 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Too slow for regular checks"]
     fn test_calc_divmod_large() {
         divmod_helper([254, 256], 60, [0, 254]);
         divmod_helper([255, 256], 60, [0, 255]);
         divmod_helper([256, 256], 60, [1, 0]);
         divmod_helper([257, 256], 60, [1, 1]);
 
-        divmod_helper([65534, 256], 8000, [255, 254]);
-        divmod_helper([65535, 256], 8000, [255, 255]);
-        divmod_helper([65536, 256], 8000, [256, 0]);
-        divmod_helper([65537, 256], 8000, [256, 1]);
+        divmod_helper([65534, 256], 1000, [255, 254]);
+        divmod_helper([65535, 256], 1000, [255, 255]);
+        divmod_helper([65536, 256], 1000, [256, 0]);
+        divmod_helper([65537, 256], 1000, [256, 1]);
+        divmod_helper([65541, 256], 1000, [256, 5]);
+    }
+
+    #[test]
+    fn test_calc_divmod_verylarge() {
+        // These are just some random u64s divided by some random u32s.
+
+        // Python3:
+        // #!/usr/bin/env python3
+        // 
+        // import random
+        // 
+        // def gen(num_bits, denom_bits):
+        //     num = random.randrange(2 ** num_bits)
+        //     while True:
+        //         denom = random.randrange(2 ** denom_bits)
+        //         if denom != 0:
+        //             break
+        //     div = num // denom
+        //     mod = num % denom
+        //     assert div * denom + mod == num, (num, denom, div, mod)
+        //     steps = max(1000, 670 * len(bin(div - 5).split('1')))
+        //     print('        divmod_helper([0x{:016x}, 0x{:016x}], {}, [0x{:016x}, 0x{:016x}]);'.format(num, denom, steps, div, mod))
+        // 
+        // print('        // u64/u32 ~= u32, smoke test')
+        // for _ in range(8):
+        //     gen(64, 32)
+        // print('        // u64/u61 ~= u3, large mod')
+        // for _ in range(8):
+        //     gen(64, 61)
+        // print('        // u64/u4 ~= u60, large div')
+        // for _ in range(8):
+        //     gen(64, 4)
+
+        // u64/u32 ~= u32, smoke test
+        divmod_helper([0x097f1e09bec7def9, 0x00000000f7d4a0a9], 8710, [0x0000000009cf418d, 0x00000000683978e4]);
+        divmod_helper([0xfa07873df47c40f5, 0x0000000017175568], 16080, [0x0000000ad3f375ee, 0x00000000090a5245]);
+        divmod_helper([0xd9e8fc88c3f325c6, 0x000000009d3ab39b], 11390, [0x0000000162ccd931, 0x0000000073f4621b]);
+        divmod_helper([0x24777262b712e2de, 0x0000000070988f67], 11390, [0x0000000052e93a33, 0x000000003571fb59]);
+        divmod_helper([0xc674fe8ac9965e4c, 0x000000001823dabd], 12060, [0x000000083897d042, 0x0000000011236992]);
+        divmod_helper([0xb61b860e8727737a, 0x00000000709952f7], 10050, [0x000000019e081dc6, 0x0000000008734d70]);
+        divmod_helper([0x8cb1ed27b5a43968, 0x00000000eddd9cd2], 13400, [0x00000000976bd96e, 0x000000003cb6d52c]);
+        divmod_helper([0x53a003009b261baa, 0x000000005094dbc3], 11390, [0x0000000109ab4c81, 0x0000000028a47a67]);
+        // u64/u61 ~= u3, large mod
+        divmod_helper([0x53abe7ac72dda83a, 0x1f3e9613fd5a484b], 2010, [0x0000000000000002, 0x152ebb84782917a4]);
+        divmod_helper([0x80a5b8ba8d4fde69, 0x0d642d43bd30126d], 1340, [0x0000000000000009, 0x08202158e69f3894]);
+        divmod_helper([0xff7e0b56ec9860f9, 0x06eb93394bdcca84], 4020, [0x0000000000000024, 0x065d5748418be669]);
+        divmod_helper([0x69deee143f0a3833, 0x08006fc68e22321d], 1340, [0x000000000000000d, 0x01d940ff074dacba]);
+        divmod_helper([0x92af0579a6d908d2, 0x169185a4f5848b5e], 1340, [0x0000000000000006, 0x0b45e39be5bdc49e]);
+        divmod_helper([0xc8e051d741402f1b, 0x0755c8fa0015dc53], 2680, [0x000000000000001b, 0x02d41f793ef1f25a]);
+        divmod_helper([0xbfa4dac2880d2222, 0x0318e9978bfec48f], 2680, [0x000000000000003d, 0x02b531a62c584c0f]);
+        divmod_helper([0x181d625ecc5d5beb, 0x0c44273c1f72614a], 1340, [0x0000000000000001, 0x0bd93b22aceafaa1]);
+        // u64/u4 ~= u60, large div
+        divmod_helper([0x177f1ea78887a74a, 0x0000000000000009], 17420, [0x029c58bd480f1296, 0x0000000000000004]);
+        divmod_helper([0x9d88ef4f768dab5d, 0x000000000000000a], 20770, [0x0fc0e4bb25749122, 0x0000000000000009]);
+        divmod_helper([0x6cccb6b00811e9df, 0x0000000000000004], 18760, [0x1b332dac02047a77, 0x0000000000000003]);
+        divmod_helper([0x023a5ee7989b3ee2, 0x000000000000000a], 19430, [0x0039097d8f42b97d, 0x0000000000000000]);
+        divmod_helper([0x96af240ab662222d, 0x000000000000000c], 20100, [0x0c8e985639dd82d9, 0x0000000000000001]);
+        divmod_helper([0xe6d49eadc19dcde8, 0x000000000000000d], 21440, [0x11c1960d5da9ad60, 0x0000000000000008]);
+        divmod_helper([0x69c28f16f2058b68, 0x0000000000000004], 20100, [0x1a70a3c5bc8162da, 0x0000000000000000]);
+        divmod_helper([0x538699b85202aec8, 0x0000000000000008], 18090, [0x0a70d3370a4055d9, 0x0000000000000000]);
     }
 }

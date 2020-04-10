@@ -116,6 +116,16 @@ impl Resolver {
 
         PloopBlock::from(resolved_statements.as_slice())
     }
+
+    pub fn make_table(&self) -> String {
+        let mut inv_table = BTreeMap::new();
+        for (dyn_ident, var) in &self.dict {
+            inv_table.entry(var.0)
+                .and_modify(|e| { panic!("Collision at {}: both {:?} and {:?}", var, dyn_ident, e) })
+                .or_insert(dyn_ident);
+        }
+        format!("{:?}", inv_table)
+    }
 }
 
 #[cfg(test)]
