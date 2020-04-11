@@ -262,6 +262,7 @@ enum BinaryCalcOperation {
     LogAnd,
     LogOr,
     OrdQuery(CalcOrd),
+    Join,
 }
 
 impl BinaryCalcOperation {
@@ -321,6 +322,9 @@ impl BinaryCalcOperation {
             Div => DivMod::Div.gen_code(lhs, rhs, dst),
             Mod => DivMod::Mod.gen_code(lhs, rhs, dst),
             OrdQuery(ord) => ord.gen_code(lhs, rhs, dst),
+            Join => vec![
+                unimplemented!(),
+            ],
         }
     }
 }
@@ -376,6 +380,57 @@ impl CalcExpression {
         }
     }
 }
+
+struct Split(ParseIdent);
+
+impl Split {
+    #[must_use]
+    fn gen_code(self, stack_depth: u32, head: &ParseIdent, tail: &ParseIdent) -> Vec<ParseStatement> {
+        use ParseStatement::*;
+        let zero = ParseIdent::Dynamic(DynamicIdent::Zero);
+        let head_incomplete = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 0));
+        // 8 bit = byte
+        // 4 bit = nibble
+        // 3 bit = nom
+        // ;-)
+        let nom = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 1));
+        let halfbase = 8; // 0b1000
+        let tmp = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 2));
+        vec![
+            // This works even if src is either of head/tail!
+            AddToInto(nat(0), self.0, tail.clone()),
+            AddToInto(nat(0), zero.clone(), head.clone()),
+            AddToInto(nat(1), zero.clone(), head_incomplete.clone()),
+
+            LoopDo(tail.clone(), ParseBlock(vec![
+                LoopDo(head_incomplete.clone(), ParseBlock(vec![
+                    // tail, head_incomplete := divmod(tail, BASE)
+                    AddToInto(nat(2 * halfbase), zero.clone(), tmp.clone()),
+                    DoTimes(nat(1), ParseBlock(
+                        // TODO: Splice, instead of DoTimes(1, …)
+                        DivMod::Take.gen_code(&tail, &tmp, &head_incomplete)
+                    )),
+                    // head_incomplete, nom := divmod(head_incomplete, HALFBASE)
+                    AddToInto(nat(halfbase), zero.clone(), tmp.clone()),
+                    DoTimes(nat(1), ParseBlock(
+                        // TODO: Splice, instead of DoTimes(1, …)
+                        DivMod::Take.gen_code(&head_incomplete, &tmp, &nom)
+                    )),
+                    // Would like to assert 0 <= head_incomplete && head_incomplete <= 1
+
+                    // head = head * HALFBASE + nom
+                    LoopDo(head.clone(), ParseBlock(vec![
+                        AddToInto(nat(halfbase - 1), head.clone(), head.clone()),
+                    ])),
+                    LoopDo(nom.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), head.clone(), head.clone()),
+                    ])),
+                ])),
+            ])),
+        ]
+    }
+}
+
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseBlock(Vec<ParseStatement>);
@@ -526,7 +581,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
             Some(LogNot) => {
                 Ok(CalcExpression::LogNot(Box::new(self.parse_calc_expression()?)))
             }
-            Some(op_token @ (Plus | SatMinus | Mult | Div | Mod | OrdCmp | OrdNe | OrdEq | OrdLt | OrdLe | OrdGt | OrdGe | LogAnd | LogOr)) => {
+            Some(op_token @ (Plus | SatMinus | Mult | Div | Mod | OrdCmp | OrdNe | OrdEq | OrdLt | OrdLe | OrdGt | OrdGe | LogAnd | LogOr | Join)) => {
                 let op = match op_token {
                     Plus => BinaryCalcOperation::Add,
                     SatMinus => BinaryCalcOperation::Sub,
@@ -542,6 +597,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                     OrdGe => BinaryCalcOperation::OrdQuery(CalcOrd::Ge),
                     LogAnd => BinaryCalcOperation::LogAnd,
                     LogOr => BinaryCalcOperation::LogOr,
+                    Join => BinaryCalcOperation::Join,
                     _ => unreachable!(),
                 };
                 Ok(CalcExpression::Binary(op, Box::new(self.parse_calc_expression()?), Box::new(self.parse_calc_expression()?)))
@@ -598,6 +654,13 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                 self.parse_expected(Token::Into)?;
                 let dst = self.parse_ident()?;
                 Ok(DoTimes(nat(1), ParseBlock(expr.gen_code(&dst))))
+            }
+            Token::Split => {
+                let src = self.parse_ident()?;
+                self.parse_expected(Token::Into)?;
+                let head = self.parse_ident()?;
+                let tail = self.parse_ident()?;
+                Ok(DoTimes(nat(1), ParseBlock(Split(src).gen_code(0, &head, &tail))))
             }
             Token::If => {
                 let expr = CalcExpression::LogNot(Box::new(

@@ -151,6 +151,7 @@ pub enum Token {
     LogAnd,
     LogOr,
     LogNot,
+    Join,
     // Number
     // Ident
     // Into
@@ -158,9 +159,15 @@ pub enum Token {
     // ---
     If,
     // Exprstuff
-    // Do,
+    // Do
     // <Recursion>
     // Else,
+    // ---
+    Split,
+    // Ident
+    // Into
+    // Ident
+    // Ident
 }
 
 pub struct Tokenizer<I> {
@@ -266,6 +273,7 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
             "times" => return Ok(Times),
             "while" => return Ok(While),
             "calc" => return Ok(Calc),
+            "split" => return Ok(Split),
             "if" => return Ok(If),
             // "else" => return Ok(Else),
             "+" => return Ok(Plus),
@@ -283,6 +291,7 @@ impl<I: Iterator<Item = Result<char>>> Tokenizer<I> {
             "&&" => return Ok(LogAnd),
             "||" => return Ok(LogOr),
             "!" => return Ok(LogNot),
+            "::" => return Ok(Join),
             _ => {}
         }
         debug_assert!(!word.is_empty());
@@ -424,8 +433,9 @@ mod test_tokenizer {
         use Token::*;
         let (tokens, maybe_error) = tokenize_string("
             add to into subtract from loop do end times while calc
-            + - * / % ?= <> == < <= > >= && || !
+            + - * / % ?= <> == < <= > >= :: && || !
             if # else
+            split
         ");
 
         assert_eq!(
@@ -433,7 +443,8 @@ mod test_tokenizer {
             vec![
                 Add, To, Into, Subtract, From, Loop, Do, End,
                 Times, While, Calc, Plus, SatMinus, Mult, Div, Mod, OrdCmp, OrdNe, OrdEq,
-                OrdLt, OrdLe, OrdGt, OrdGe, LogAnd, LogOr, LogNot, If,
+                OrdLt, OrdLe, OrdGt, OrdGe, Join, LogAnd, LogOr, LogNot, If,
+                Split,
             ]
         );
         assert!(maybe_error.is_none());

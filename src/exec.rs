@@ -438,7 +438,7 @@ mod test {
         let max_steps = match exp_halts {
             Halts::NotEvenAfter(n) => n + 5,
             // Make off-by-one-errors more obvious:
-            Halts::OnOrBefore(n) => n + 5,
+            Halts::OnOrBefore(n) => n * 2 + 5,
         };
 
         let (act_halts, conf) = observe(code, input, max_steps);
@@ -1759,5 +1759,53 @@ mod test {
         divmod_helper([0xe6d49eadc19dcde8, 0x000000000000000d], 21440, [0x11c1960d5da9ad60, 0x0000000000000008]);
         divmod_helper([0x69c28f16f2058b68, 0x0000000000000004], 20100, [0x1a70a3c5bc8162da, 0x0000000000000000]);
         divmod_helper([0x538699b85202aec8, 0x0000000000000008], 18090, [0x0a70d3370a4055d9, 0x0000000000000000]);
+    }
+
+    fn split_helper(args: [u64; 1], time: u32, results: [u64; 2]) {
+        run_test(
+            "split v0 into v1 v2",
+            env_from(vec![(0, args[0]), (1, 0xbad), (2, 0xbaaaad)]),
+            Halts::OnOrBefore(time),
+            vec![(0, args[0]), (1, results[0]), (2, results[1])],
+        );
+    }
+
+    #[test]
+    fn test_split_simple() {
+        split_helper([0xcafe18889], 30000, [0x1001, 0xcafe]);
+        split_helper([0x0], 30000, [0, 0]);
+        split_helper([0x8], 30000, [0, 0]);
+        split_helper([0x88888], 30000, [0, 0]);
+        split_helper([0x70], 30000, [0, 7]);
+        split_helper([0x78], 30000, [7, 0]);
+        split_helper([0x7], 30000, [7, 0]);
+        split_helper([0x788888], 30000, [7, 0]);
+        split_helper([0x7088888], 30000, [0, 7]);
+        split_helper([0x71], 30000, [0o1, 7]);
+        split_helper([0x79], 30000, [0o17, 0]);
+        split_helper([0x788889], 30000, [0o100007, 0]);
+        split_helper([0x7088889], 30000, [0o100000, 7]);
+        split_helper([0x88889], 30000, [0o100000, 0]);
+    }
+
+    #[test]
+    fn test_split_longhead() {
+        split_helper([0b11101111101111101111111010111111], 60000,
+                     [0b_111_011_110_111_110_011_111_110_000, 0]);
+        split_helper([0b01101111101111101111111010111111], 60000,
+                     [0b_111_011_110_111_110_011_111_110, 0]);
+
+        split_helper([0b10011100101111001000110110101110], 60000,
+                     [0b_110_010_101_000_100_011_100_001_000, 0]);
+        split_helper([0b00011100101111001000110110101110], 60000,
+                     [0b_110_010_101_000_100_011_100_001, 0]);
+    }
+
+    #[test]
+    fn test_split_large() {
+        // 0b_101_000_110_111_111_011_000_010 :: 0x57af7082
+        //      D   8   E   F   F   B   8   2 (reverse)
+        // = 0x57af708228bffe8d
+        split_helper([0x57af708228bffe8d], 100000, [0b_101_000_110_111_111_011_000_010, 0x57af7082]);
     }
 }
