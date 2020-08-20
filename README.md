@@ -4,6 +4,12 @@
 
 This library/binary implements a parser and interpreter of BlooP/FlooP programs.
 
+# ABANDONED
+
+It only implements half of it. I've had my fun, I proved that it can be done. But there's no actual point to it, noone will ever use it, so it's abandoned.
+
+It you need it for anything, or want to do something with it, or just wanna start a chat, feel free to contact me! (Looking at the git history should tell you how.)
+
 ## Table of Contents
 
 - [Install](#install)
