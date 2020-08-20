@@ -4,8 +4,6 @@ use std::iter::Peekable;
 
 use super::{nat, IdentToken, Natural, Token};
 
-pub const HALFBASE: u64 = 8;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum CalcOrd {
     Cmp,
@@ -21,7 +19,6 @@ impl CalcOrd {
     #[must_use]
     fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
         use ParseStatement::*;
-        let zero = ParseIdent::Dynamic(DynamicIdent::Zero);
         let tmp = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
         let v0nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
         let v1nonzero = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
@@ -31,18 +28,18 @@ impl CalcOrd {
             LoopDo(rhs.clone(), ParseBlock(vec![
                 SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
             ])),
-            AddToInto(nat(0), zero.clone(), v0nonzero.clone()),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
             LoopDo(tmp.clone(), ParseBlock(vec![
-                AddToInto(nat(1), zero.clone(), v0nonzero.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v0nonzero.clone()),
             ])),
             // v1nonzero := (rhs - lhs) > 0
             AddToInto(nat(0), rhs.clone(), tmp.clone()),
             LoopDo(lhs.clone(), ParseBlock(vec![
                 SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
             ])),
-            AddToInto(nat(0), zero.clone(), v1nonzero.clone()),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
             LoopDo(tmp.clone(), ParseBlock(vec![
-                AddToInto(nat(1), zero.clone(), v1nonzero.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), v1nonzero.clone()),
             ])),
         ];
         // assert ! ( _v0nonzero && _v1nonzero )
@@ -50,7 +47,7 @@ impl CalcOrd {
         code.append(&mut match self {
             CalcOrd::Cmp => vec![
                 // 1 - v1nonzero + v0nonzero
-                AddToInto(nat(1), zero.clone(), dst.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 LoopDo(v1nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
@@ -60,22 +57,22 @@ impl CalcOrd {
             ],
             CalcOrd::Ne => vec![
                 // 0 + v0nonzero + v1nonzero
-                AddToInto(nat(0), zero.clone(), dst.clone()),
+                AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 LoopDo(v0nonzero, ParseBlock(vec![
-                    AddToInto(nat(1), zero.clone(), dst.clone()),
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
                 LoopDo(v1nonzero, ParseBlock(vec![
-                    AddToInto(nat(1), zero.clone(), dst.clone()),
+                    AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
             ],
             CalcOrd::Eq => vec![
                 // 1 - v0nonzero - v1nonzero
-                AddToInto(nat(1), zero.clone(), dst.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 LoopDo(v0nonzero, ParseBlock(vec![
-                    AddToInto(nat(0), zero.clone(), dst.clone()),
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
                 LoopDo(v1nonzero, ParseBlock(vec![
-                    AddToInto(nat(0), zero.clone(), dst.clone()),
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 ])),
             ],
             CalcOrd::Lt => vec![
@@ -84,7 +81,7 @@ impl CalcOrd {
             ],
             CalcOrd::Le => vec![
                 // 1 - v0nonzero
-                AddToInto(nat(1), zero.clone(), dst.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 LoopDo(v0nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
@@ -95,7 +92,7 @@ impl CalcOrd {
             ],
             CalcOrd::Ge => vec![
                 // 1 - v1nonzero
-                AddToInto(nat(1), zero.clone(), dst.clone()),
+                AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), dst.clone()),
                 LoopDo(v1nonzero, ParseBlock(vec![
                     SubtractFromInto(nat(1), dst.clone(), dst.clone()),
                 ])),
@@ -116,125 +113,37 @@ impl DivMod {
     #[must_use]
     fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
         use ParseStatement::*;
-        let zero = ParseIdent::Dynamic(DynamicIdent::Zero);
-        let res_incomplete = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
-        let prod_incomplete = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
-        let res_div = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
-        let res_mod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(3));
-        let tmp = ParseIdent::Dynamic(DynamicIdent::CalcTemp(4));
-        let prod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(5));
-        let factor = ParseIdent::Dynamic(DynamicIdent::CalcTemp(6));
-        let nextprod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(7));
-        let nextfactor = ParseIdent::Dynamic(DynamicIdent::CalcTemp(8));
+        let unsure = ParseIdent::Dynamic(DynamicIdent::CalcTemp(0));
+        let res_div = ParseIdent::Dynamic(DynamicIdent::CalcTemp(1));
+        let res_mod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(2));
+        let next_overmod = ParseIdent::Dynamic(DynamicIdent::CalcTemp(3));
 
-        // This implements long division in binary.
-        // This code should take about ( log_2(lhs/rhs) )^2 steps
-        // in a reasonably optimized (i.e. this) interpreter.
         let mut code = vec![
-            AddToInto(nat(1), zero.clone(), res_incomplete.clone()),
-            AddToInto(nat(0), zero.clone(), res_div.clone()),
+            AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
+            AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), res_div.clone()),
             AddToInto(nat(0), lhs.clone(), res_mod.clone()),
-            // Should not use lhs after this line.
 
-            // First, try to see whether it's a "small" multiple of rhs.
             // Invariants:
             // res_div * rhs + res_mod == lhs
-            // (res_incomplete == 0) implies res_div == floor(lhs / rhs)
-            DoTimes(nat(5), ParseBlock(vec![
-                LoopDo(res_incomplete.clone(), ParseBlock(vec![
-                    // Is (res_mod + 1) - rhs > 0 ?
-                    AddToInto(nat(1), res_mod.clone(), tmp.clone()),
+            // (unsure == 0) implies res_div == floor(lhs / rhs)
+            LoopDo(lhs.clone(), ParseBlock(vec![
+                LoopDo(unsure.clone(), ParseBlock(vec![
+                    // Compute (res_mod + 1) - rhs
+                    AddToInto(nat(1), res_mod.clone(), next_overmod.clone()),
                     LoopDo(rhs.clone(), ParseBlock(vec![
-                        SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
+                        SubtractFromInto(nat(1), next_overmod.clone(), next_overmod.clone()),
                     ])),
-                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), res_incomplete.clone()),
-                    LoopDo(tmp.clone(), ParseBlock(vec![
-                        // If (res_mod + 1) - rhs > 0, then res_mod was >= rhs.
-                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), res_incomplete.clone()),
+                    // If next_overmod is > 0, then res_mod was >= rhs.
+                    AddToInto(nat(0), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
+                    LoopDo(next_overmod.clone(), ParseBlock(vec![
+                        AddToInto(nat(1), ParseIdent::Dynamic(DynamicIdent::Zero), unsure.clone()),
                     ])),
                     // And if that wasn't the answer, need to increment:
-                    LoopDo(res_incomplete.clone(), ParseBlock(vec![
+                    LoopDo(unsure.clone(), ParseBlock(vec![
                         AddToInto(nat(1), res_div.clone(), res_div.clone()),
-                        // This "add one subtract one" game is a bit tedious, but necessary.
-                        SubtractFromInto(nat(1), tmp.clone(), res_mod.clone()),
-                    ])),
-                ])),
-            ])),
-
-            // Invariants:
-            // res_div * rhs + res_mod == lhs
-            // (res_incomplete == 0) implies res_div == floor(lhs / rhs)
-            // Takes log_2(lhs/rhs) iterations
-            // (specifically: one for each '1' in the final binary representation of res_div).
-            LoopDo(lhs.clone(), ParseBlock(vec![
-                LoopDo(res_incomplete.clone(), ParseBlock(vec![
-                    // Check whether there is anything to be done:
-                    // Determine res_mod >= rhs by checking (res_mod + 1) - rhs > 0, then
-                    AddToInto(nat(1), res_mod.clone(), tmp.clone()),
-                    LoopDo(rhs.clone(), ParseBlock(vec![
-                        SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
-                    ])),
-                    AddToInto(nat(0), zero.clone(), res_incomplete.clone()),
-                    LoopDo(tmp.clone(), ParseBlock(vec![
-                        AddToInto(nat(1), zero.clone(), res_incomplete.clone()),
-                    ])),
-                    // Consider tmp now as garbage
-
-                    LoopDo(res_incomplete.clone(), ParseBlock(vec![
-                        // Yes, there is still something to be done!
-                        // (i.e., _res_mod >= _rhs)
-
-                        // Find the largest power of two such that
-                        // rhs * factor <= res_mod
-                        // Define factor := 2 ** thepower,
-                        // and prod := rhs * factor
-                        AddToInto(nat(1), zero.clone(), factor.clone()),
-                        AddToInto(nat(0), rhs.clone(), prod.clone()),
-                        AddToInto(nat(1), zero.clone(), prod_incomplete.clone()),
-                        // Takes log_2(lhs/rhs) iterations (even on average!) to find the right power
-                        // (specifically: one for each '1' in the binary representation of res_div).
-                        LoopDo(res_mod.clone(), ParseBlock(vec![
-                            LoopDo(prod_incomplete.clone(), ParseBlock(vec![
-                                // Determine next power of two
-                                AddToInto(nat(0), prod.clone(), nextprod.clone()),
-                                LoopDo(prod.clone(), ParseBlock(vec![
-                                    AddToInto(nat(1), nextprod.clone(), nextprod.clone()),
-                                ])),
-                                AddToInto(nat(0), factor.clone(), nextfactor.clone()),
-                                LoopDo(factor.clone(), ParseBlock(vec![
-                                    AddToInto(nat(1), nextfactor.clone(), nextfactor.clone()),
-                                ])),
-
-                                // Check whether it's still a good idea, i.e. nextprod <= res_mod
-                                // Again, by checking (res_mod + 1) - nextprod > 0
-                                AddToInto(nat(1), res_mod.clone(), tmp.clone()),
-                                LoopDo(nextprod.clone(), ParseBlock(vec![
-                                    SubtractFromInto(nat(1), tmp.clone(), tmp.clone()),
-                                ])),
-                                // In case you're wondering: Yes, all of this *is*
-                                // basically the same check as for _unsure.  However, I don't
-                                // know how to avoid code duplication, since it's used rather differently.
-                                AddToInto(nat(0), zero.clone(), prod_incomplete.clone()),
-                                LoopDo(tmp.clone(), ParseBlock(vec![
-                                    AddToInto(nat(1), zero.clone(), prod_incomplete.clone()),
-                                ])),
-                                // Consider tmp now as garbage
-
-                                LoopDo(prod_incomplete.clone(), ParseBlock(vec![
-                                    AddToInto(nat(0), nextprod.clone(), prod.clone()),
-                                    AddToInto(nat(0), nextfactor.clone(), factor.clone()),
-                                ])),
-                            ])),
-                        ])),
-
-                        // We now know where the most significant bit is in res_mod/rhs,
-                        // And have factor and prod available to do the step:
-                        LoopDo(prod.clone(), ParseBlock(vec![
-                            SubtractFromInto(nat(1), res_mod.clone(), res_mod.clone()),
-                        ])), // Note: _res_mod might now be 0!
-                        LoopDo(factor.clone(), ParseBlock(vec![
-                            AddToInto(nat(1), res_div.clone(), res_div.clone()),
-                        ])),
+                        // This "add one subtract one" game is a bit tedious.
+                        // TODO: Optimize "div" calc
+                        SubtractFromInto(nat(1), next_overmod.clone(), res_mod.clone()),
                     ])),
                 ])),
             ])),
@@ -254,60 +163,6 @@ impl DivMod {
     }
 }
 
-struct Join(ParseIdent, ParseIdent);
-
-impl Join {
-    #[must_use]
-    fn gen_code(self, stack_depth: u32, dst: &ParseIdent) -> Vec<ParseStatement> {
-        use ParseStatement::*;
-        let zero = ParseIdent::Dynamic(DynamicIdent::Zero);
-        // FIXME: renumber
-        let head_remaining = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 0));
-        let head_nonzero = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 0));
-        // 8 bit = byte
-        // 4 bit = nibble
-        // 3 bit = nom
-        // ;-)
-        let nom = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 1));
-        let tmp = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 2));
-        vec![
-            AddToInto(nat(0), self.0, head_remaining.clone()),
-            AddToInto(nat(0), self.1, dst.clone()),
-            unimplemented!();
-            // This works even if src is either of head/tail!
-            AddToInto(nat(0), self.0, tail.clone()),
-            AddToInto(nat(0), zero.clone(), head.clone()),
-            AddToInto(nat(1), zero.clone(), head_incomplete.clone()),
-
-            LoopDo(tail.clone(), ParseBlock(vec![
-                LoopDo(head_incomplete.clone(), ParseBlock(vec![
-                    // tail, head_incomplete := divmod(tail, BASE)
-                    AddToInto(nat(2 * halfbase), zero.clone(), tmp.clone()),
-                    DoTimes(nat(1), ParseBlock(
-                        // TODO: Splice, instead of DoTimes(1, …)
-                        DivMod::Take.gen_code(&tail, &tmp, &head_incomplete)
-                    )),
-                    // head_incomplete, nom := divmod(head_incomplete, HALFBASE)
-                    AddToInto(nat(halfbase), zero.clone(), tmp.clone()),
-                    DoTimes(nat(1), ParseBlock(
-                        // TODO: Splice, instead of DoTimes(1, …)
-                        DivMod::Take.gen_code(&head_incomplete, &tmp, &nom)
-                    )),
-                    // Would like to assert 0 <= head_incomplete && head_incomplete <= 1
-
-                    // head = head * HALFBASE + nom
-                    LoopDo(head.clone(), ParseBlock(vec![
-                        AddToInto(nat(halfbase - 1), head.clone(), head.clone()),
-                    ])),
-                    LoopDo(nom.clone(), ParseBlock(vec![
-                        AddToInto(nat(1), head.clone(), head.clone()),
-                    ])),
-                ])),
-            ])),
-        ]
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum BinaryCalcOperation {
     Add,
@@ -318,12 +173,11 @@ enum BinaryCalcOperation {
     LogAnd,
     LogOr,
     OrdQuery(CalcOrd),
-    Join,
 }
 
 impl BinaryCalcOperation {
     #[must_use]
-    fn gen_code(self, stack_depth: u32, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
+    fn gen_code(self, lhs: &ParseIdent, rhs: &ParseIdent, dst: &ParseIdent) -> Vec<ParseStatement> {
         /* Some, if not all of these implementations cannot handle the case where dst \in \{ lhs, rhs \}.
          * CalcExpression handles this by copying all supplied idents to local registers first. */
         use BinaryCalcOperation::*;
@@ -378,7 +232,6 @@ impl BinaryCalcOperation {
             Div => DivMod::Div.gen_code(lhs, rhs, dst),
             Mod => DivMod::Mod.gen_code(lhs, rhs, dst),
             OrdQuery(ord) => ord.gen_code(lhs, rhs, dst),
-            Join => crate::parse::Join(lhs.clone(), rhs.clone()).gen_code(stack_depth, dst),
         }
     }
 }
@@ -416,7 +269,7 @@ impl CalcExpression {
                 stack_depth += 1;
                 rhs.gen_code_recursive(stack_depth, &rhs_ident, into);
 
-                into.append(&mut op.gen_code(stack_depth, &lhs_ident, &rhs_ident, &dst));
+                into.append(&mut op.gen_code(&lhs_ident, &rhs_ident, &dst));
             }
             LogNot(sub) => {
                 let sub_ident = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth));
@@ -432,55 +285,6 @@ impl CalcExpression {
                 ]);
             }
         }
-    }
-}
-
-struct Split(ParseIdent);
-
-impl Split {
-    #[must_use]
-    fn gen_code(self, stack_depth: u32, head: &ParseIdent, tail: &ParseIdent) -> Vec<ParseStatement> {
-        use ParseStatement::*;
-        let zero = ParseIdent::Dynamic(DynamicIdent::Zero);
-        let head_incomplete = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 0));
-        // 8 bit = byte
-        // 4 bit = nibble
-        // 3 bit = nom
-        // ;-)
-        let nom = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 1));
-        let tmp = ParseIdent::Dynamic(DynamicIdent::CalcIntermediate(stack_depth + 2));
-        vec![
-            // This works even if src is either of head/tail!
-            AddToInto(nat(0), self.0, tail.clone()),
-            AddToInto(nat(0), zero.clone(), head.clone()),
-            AddToInto(nat(1), zero.clone(), head_incomplete.clone()),
-
-            LoopDo(tail.clone(), ParseBlock(vec![
-                LoopDo(head_incomplete.clone(), ParseBlock(vec![
-                    // tail, head_incomplete := divmod(tail, 2 * HALFBASE)
-                    AddToInto(nat(2 * HALFBASE), zero.clone(), tmp.clone()),
-                    DoTimes(nat(1), ParseBlock(
-                        // TODO: Splice, instead of DoTimes(1, …)
-                        DivMod::Take.gen_code(&tail, &tmp, &head_incomplete)
-                    )),
-                    // head_incomplete, nom := divmod(head_incomplete, HALFBASE)
-                    AddToInto(nat(HALFBASE), zero.clone(), tmp.clone()),
-                    DoTimes(nat(1), ParseBlock(
-                        // TODO: Splice, instead of DoTimes(1, …)
-                        DivMod::Take.gen_code(&head_incomplete, &tmp, &nom)
-                    )),
-                    // Would like to assert 0 <= head_incomplete && head_incomplete <= 1
-
-                    // head = head * HALFBASE + nom
-                    LoopDo(head.clone(), ParseBlock(vec![
-                        AddToInto(nat(HALFBASE - 1), head.clone(), head.clone()),
-                    ])),
-                    LoopDo(nom.clone(), ParseBlock(vec![
-                        AddToInto(nat(1), head.clone(), head.clone()),
-                    ])),
-                ])),
-            ])),
-        ]
     }
 }
 
@@ -633,7 +437,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
             Some(LogNot) => {
                 Ok(CalcExpression::LogNot(Box::new(self.parse_calc_expression()?)))
             }
-            Some(op_token @ (Plus | SatMinus | Mult | Div | Mod | OrdCmp | OrdNe | OrdEq | OrdLt | OrdLe | OrdGt | OrdGe | LogAnd | LogOr | Join)) => {
+            Some(op_token @ (Plus | SatMinus | Mult | Div | Mod | OrdCmp | OrdNe | OrdEq | OrdLt | OrdLe | OrdGt | OrdGe | LogAnd | LogOr)) => {
                 let op = match op_token {
                     Plus => BinaryCalcOperation::Add,
                     SatMinus => BinaryCalcOperation::Sub,
@@ -649,7 +453,6 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                     OrdGe => BinaryCalcOperation::OrdQuery(CalcOrd::Ge),
                     LogAnd => BinaryCalcOperation::LogAnd,
                     LogOr => BinaryCalcOperation::LogOr,
-                    Join => BinaryCalcOperation::Join,
                     _ => unreachable!(),
                 };
                 Ok(CalcExpression::Binary(op, Box::new(self.parse_calc_expression()?), Box::new(self.parse_calc_expression()?)))
@@ -706,13 +509,6 @@ impl<I: Iterator<Item = Result<Token>>> Parser<Peekable<I>> {
                 self.parse_expected(Token::Into)?;
                 let dst = self.parse_ident()?;
                 Ok(DoTimes(nat(1), ParseBlock(expr.gen_code(&dst))))
-            }
-            Token::Split => {
-                let src = self.parse_ident()?;
-                self.parse_expected(Token::Into)?;
-                let head = self.parse_ident()?;
-                let tail = self.parse_ident()?;
-                Ok(DoTimes(nat(1), ParseBlock(Split(src).gen_code(0, &head, &tail))))
             }
             Token::If => {
                 let expr = CalcExpression::LogNot(Box::new(

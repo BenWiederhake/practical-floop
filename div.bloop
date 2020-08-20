@@ -1,0 +1,80 @@
+add 0x1 to _zero into _unsure
+add 0x0 to _zero into _res_div
+add _lhs to _zero into _res_mod
+# Should not use _lhs after this line
+
+# First, try to see whether it's a "small" multiple of rhs
+# FIXME
+
+# This implements long division in binary.
+# This code should take about log_2(_lhs/_rhs) ^ 2 steps
+# in a reasonably optimized interpreter.
+loop _res_mod do # Need log_2(_lhs/_rhs) iterations
+    loop _unsure do
+        # Check whether there is anything to be done:
+        # Determine _res_mod >= _rhs by checking (_res_mod + 1) - _rhs > 0, then
+        add 0x1 to _res_mod into _tmp
+        loop _rhs do
+            subtract 0x1 from _tmp into _tmp
+        end
+        add 0x0 to _zero into _unsure
+        loop _tmp do
+            add 0x1 to _zero into _unsure
+        end
+        # drop _tmp
+
+        loop _unsure do
+            # Yes, there is still something to be done!
+            # (i.e., _res_mod >= _rhs)
+
+            # Find the largest power of two such that _rhs * _factor <= _res_mod
+            # Spefically, _factor == 2 ** thepower,
+            # and _prod == _rhs * _factor
+            add 0x1 to _zero into _factor
+            add 0x0 to _rhs into _prod
+            add 0x1 to _zero into _thepower_not_found
+            loop _res_mod do # Takes log_2(_lhs/_rhs) iterations (even on average!) to find the right power
+                loop _thepower_not_found do
+                    # Determine next power of two
+                    add 0x0 to _prod into _nextprod
+                    loop _prod do
+                        add 0x1 to _nextprod into _nextprod
+                    end
+                    add 0x0 to _factor into _nextfactor
+                    loop _factor do
+                        add 0x1 to _nextfactor into _nextfactor
+                    end
+
+                    # Check whether it's still a good idea, i.e. _nextprod <= _res_mod
+                    # Again, by checking (_res_mod + 1) - _nextprod > 0
+                    add 0x1 to _res_mod into _tmp
+                    loop _nextprod do
+                        subtract 0x1 from _tmp into _tmp
+                    end
+                    # In case you're wondering: Yes, all of this *is*
+                    # basically the same check as for _unsure.  However, I don't
+                    # know how to avoid code duplication, since it's used rather differently.
+                    add 0x0 to _zero into _thepower_not_found
+                    loop _tmp do
+                        add 0x1 to _zero into _thepower_not_found
+                    end
+
+                    loop _thepower_not_found do
+                        # Great, _nextfactor and _nextprod are usable!
+                        add 0x0 to _nextfactor into _factor
+                        add 0x0 to _nextprod into _prod
+                    end
+                end
+            end
+
+            # We now know where the most significant bit is in _res_mod / _rhs,
+            # And have _factor and _prod available to do the step:
+            loop _prod do:
+                subtract 0x1 from _res_mod into _res_mod
+            end  # Note: _res_mod might now be 0!
+            loop _factor do:
+                add 0x1 to _res_div into _res_div
+            end
+        end
+    end
+end
